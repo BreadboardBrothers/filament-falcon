@@ -97,7 +97,7 @@
 
 ## 1 · Install everything: `setup.sh`
 ```
-git clone https://github.com/whyvas/filament-falcon.git
+git clone https://github.com/breadboardbrothers/filament-falcon.git
 cd filament-falcon
 ./setup.sh --dry-run      # optional: show the plan, change nothing
 ./setup.sh                # asks once, then installs (sudo password)

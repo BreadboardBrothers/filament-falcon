@@ -5,7 +5,7 @@ It installs everything the game, the VR spacewalk and the cockpit panels need, t
 check and tells you what is left to do.
 
 ```bash
-git clone https://github.com/whyvas/filament-falcon.git
+git clone https://github.com/breadboardbrothers/filament-falcon.git
 cd filament-falcon
 ./setup.sh --dry-run     # optional: print every command, change nothing
 ./setup.sh               # shows the plan, asks once, then installs (asks for your sudo password)
