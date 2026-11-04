@@ -196,22 +196,69 @@ func identify_seat(s: String) -> void:
 	Sfx.click()
 
 
-## Saved value for a picker entry: node name + "@port=<usb port>" (identical headsets' node names
-## swap their ".2" counter between boots; the port does not). Old saves are plain names.
+## Saved value for a picker entry. New picks are "node@bus=<usb path>" so a ".2" rename
+## still finds the same jack, and analog vs digital on that jack stay different picks.
+## Older saves are "node@port=<short port>" or a bare node name.
 static func io_value(dv: Dictionary) -> String:
 	return str(dv.get("key", dv.get("name", "")))
 
 
+static var _fam_re: RegEx
+
+
+## Node name without the trailing ".2" counter. Analog and iec958 stay different.
+static func _family(name: String) -> String:
+	if _fam_re == null:
+		_fam_re = RegEx.new()
+		_fam_re.compile("\\.\\d+$")
+	return _fam_re.sub(name, "", true)
+
+
+static func _choice_parts(value: String) -> Dictionary:
+	var name := value
+	var bus := ""
+	var port := ""
+	if "@bus=" in value:
+		name = value.get_slice("@bus=", 0)
+		bus = value.get_slice("@bus=", 1)
+	elif "@port=" in value:
+		name = value.get_slice("@port=", 0)
+		port = value.get_slice("@port=", 1)
+	return {"name": name, "bus": bus, "port": port}
+
+
+## True when this live device is the one a saved AUDIO OUT / MIC IN value points at,
+## including after the node name's ".2" counter swaps.
+func _io_matches(dv: Dictionary, value: String) -> bool:
+	if value == "" or dv.is_empty():
+		return false
+	if io_value(dv) == value or str(dv.get("name", "")) == value:
+		return true
+	var p := _choice_parts(value)
+	var nm := str(dv.get("name", ""))
+	if str(p["name"]) != "" and nm == str(p["name"]):
+		return true
+	if _family(str(p["name"])) != _family(nm):
+		return false          # same jack, other profile (analog vs digital): not this pick
+	if str(p["bus"]) != "" and str(dv.get("bus", "")) == str(p["bus"]):
+		return true
+	if str(p["port"]) != "" and str(dv.get("port", "")) == str(p["port"]):
+		return true
+	return false
+
+
 func _io_find(kind: String, value: String) -> Dictionary:
 	var lst: Array = inputs if kind == "in" else outputs
+	var hit := {}
 	for dv: Dictionary in lst:
-		if io_value(dv) == value:
+		if not _io_matches(dv, value):
+			continue
+		var p := _choice_parts(value)
+		if io_value(dv) == value or str(dv.get("name", "")) == value or str(dv.get("name", "")) == str(p["name"]):
 			return dv
-	var nm := value.get_slice("@port=", 0)
-	for dv: Dictionary in lst:
-		if str(dv["name"]) == nm:
-			return dv
-	return {}
+		if hit.is_empty():
+			hit = dv
+	return hit
 
 
 func _io_taken(s: String, kind: String, dv: Dictionary) -> bool:
@@ -219,7 +266,7 @@ func _io_taken(s: String, kind: String, dv: Dictionary) -> bool:
 		if o == s:
 			continue
 		var v := str(Settings.get_v("ics", "%s_%s" % [o, kind]))
-		if v != "" and (v == io_value(dv) or v == str(dv["name"])):
+		if v != "" and v != "none" and v != "default" and _io_matches(dv, v):
 			return true
 	return false
 
@@ -277,12 +324,13 @@ func io_options(s: String, kind: String) -> Array:
 	var out: Array = [["", hs], ["none", "None"], ["default", "System default"]]
 	var cur := str(Settings.get_v("ics", "%s_%s" % [s, kind]))
 	var have_cur := cur in ["", "none", "default"]
+	var owner := _io_find(kind, cur)
 	for dv: Dictionary in lst:
 		if _io_taken(s, kind, dv):
 			continue
 		var val := io_value(dv)
-		if val == cur or str(dv["name"]) == cur:
-			val = cur          # keep the saved value selected (old saves: plain node name)
+		if not owner.is_empty() and str(dv.get("name", "")) == str(owner.get("name", "")):
+			val = cur          # keep the saved value selected after a ".2" rename
 		out.append([val, friendly(val, kind)])
 		have_cur = have_cur or val == cur
 	if not have_cur:
@@ -294,7 +342,7 @@ func io_options(s: String, kind: String) -> Array:
 func friendly(value: String, kind: String) -> String:
 	var lst: Array = inputs if kind == "in" else outputs
 	var fd := _io_find(kind, value)
-	var nm := str(fd.get("name", value.get_slice("@port=", 0)))
+	var nm := str(fd.get("name", _choice_parts(value)["name"]))
 	var desc := str(fd.get("desc", ""))
 	if desc == "":
 		desc = nm.get_slice(".", 1).trim_prefix("usb-").replace("_", " ") if nm.count(".") >= 1 else nm
@@ -306,7 +354,7 @@ func friendly(value: String, kind: String) -> String:
 			dup += 1
 	if dup > 1:
 		var port := str(lst.filter(func(x: Dictionary) -> bool: return str(x["name"]) == nm)[0].get("port", ""))
-		desc += "  (port %s)" % port if port != "" else ("  #2" if nm.contains(".2.") else "  #1")
+		desc += "  (port %s)" % port if port != "" else ("  #2" if nm.ends_with(".2") or nm.contains(".2.") else "  #1")
 	return desc
 
 
@@ -316,7 +364,7 @@ func io_label(s: String, kind: String) -> String:
 	var now := str(opened[0 if kind == "in" else 1]) if opened.size() == 2 else ""
 	var pretty := func(nm: String) -> String:
 		var fd := _io_find(kind, nm)
-		return str(fd["desc"]) if not fd.is_empty() else nm.get_slice("@port=", 0)
+		return str(fd["desc"]) if not fd.is_empty() else str(_choice_parts(nm)["name"])
 	match cur:
 		"":
 			return "Headset" + ("  → " + pretty.call(now) if now != "" else "  (none)")
@@ -324,7 +372,9 @@ func io_label(s: String, kind: String) -> String:
 			return "None"
 		"default":
 			return "System default" + ("  → " + pretty.call(now) if now != "" else "")
-	return pretty.call(cur) + ("" if now == cur.get_slice("@port=", 0) or (now != "" and now == str(_io_find(kind, cur).get("name", ""))) else "  (not found)")
+	var found := _io_find(kind, cur)
+	var live_name := str(found.get("name", ""))
+	return pretty.call(cur) + ("" if live_name != "" and now == live_name else "  (not found)")
 
 
 func device_label(id: String) -> String:

@@ -64,8 +64,8 @@ const DEFAULTS := {
 	"ics": {
 		"enabled": true, "udp_port": 47810, "game_port": 47811,
 		"pilot_headset": "", "ops_headset": "", "commander_headset": "",
-		# per-station INPUT / OUTPUT override: "" = the seat's headset, "none", "default", or a
-		# PulseAudio/PipeWire node name (stable across boots; description used as fallback)
+		# per-station INPUT / OUTPUT override: "" = the seat's headset, "none", "default",
+		# or "node@bus=<usb path>" (older saves: "node@port=<short port>" or a bare node name)
 		"pilot_in": "", "pilot_out": "", "ops_in": "", "ops_out": "", "commander_in": "", "commander_out": "", "eva_in": "", "eva_out": "",
 		"radio_fx": true, "static": true, "squelch_tail": true, "beeps": true, "speakers": true,
 		"mc_vol": 0.9, "allcall_duck": 0.25,

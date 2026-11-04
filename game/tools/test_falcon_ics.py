@@ -410,7 +410,7 @@ class Devices(unittest.TestCase):
     def test_output_pick_follows_usb_port_not_node_name(self):
         outs = ics.plain_list(ics.parse_pactl_list(PA_SINKS))
         port3 = next(o for o in outs if o["port"] == "3")
-        self.assertTrue(port3["key"].endswith("@port=3"))
+        self.assertIn("@bus=pci-0000:0e:00.3-usb-0:3:1.0", port3["key"])
         self.assertEqual(ics.resolve(port3["key"], outs, "dflt"), port3["name"])
         # replug/reboot: the ".2" counter swaps between the identical sticks -> still the port-3 one
         sinks = PA_SINKS.replace("analog-stereo.2", "TMP").replace(
@@ -419,14 +419,64 @@ class Devices(unittest.TestCase):
         got = ics.resolve(port3["key"], outs2, "dflt")
         self.assertEqual(next(o for o in outs2 if o["name"] == got)["port"], "3")
         self.assertNotEqual(got, port3["name"])
+        # an older save (name@port=3, no bus path) still follows that port
+        old = port3["name"] + "@port=3"
+        self.assertEqual(ics.resolve(old, outs2, "dflt"), got)
         # its port is empty and the twin is another station's pick: nothing, never the twin
         outs3 = [o for o in outs2 if o["port"] != "3"]
         self.assertEqual(ics.resolve(port3["key"], outs3, "dflt", strict=True), "")
-        self.assertEqual(ics.resolve(port3["key"], outs3, "dflt", used={outs3[-1]["name"]} | {o["name"] for o in outs3}), "")
+        self.assertEqual(ics.resolve(old, outs3, "dflt", used={o["name"] for o in outs3}), "")
         # old saves (plain names) and the specials still work
         self.assertEqual(ics.resolve(port3["name"], outs, "dflt"), port3["name"])
         self.assertEqual(ics.resolve("default", outs, "dflt"), "dflt")
         self.assertIsNone(ics.resolve("", outs, "dflt"))
+
+    def test_output_pick_does_not_change_profile_or_steal_the_twin(self):
+        # analog + digital on the SAME usb port. Picking analog must not come back as digital,
+        # even when the analog node is already taken by another station.
+        sinks = PA_SINKS.replace("Sink #4", """Sink #9
+	Name: alsa_output.usb-C-Media_Electronics_Inc._USB_Audio_Device-00.iec958-stereo
+	Description: USB Audio Device Digital Stereo
+	Sample Specification: s16le 2ch 48000Hz
+	Properties:
+		alsa.card = "4"
+		device.bus_path = "pci-0000:0e:00.3-usb-0:3:1.0"
+		device.bus = "usb"
+		device.serial = "C-Media_Electronics_Inc._USB_Audio_Device"
+		device.product.name = "USB Audio Device"
+Sink #4""")
+        outs = ics.plain_list(ics.parse_pactl_list(sinks))
+        analog = next(o for o in outs if o["port"] == "3" and "analog" in o["name"])
+        digital = next(o for o in outs if "iec958" in o["name"])
+        self.assertEqual(analog["bus"], digital["bus"])
+        self.assertEqual(ics.resolve(analog["key"], outs, "dflt"), analog["name"])
+        self.assertEqual(ics.resolve(digital["key"], outs, "dflt"), digital["name"])
+        # analog is taken: digital pick still digital, and the analog pick is NOT quietly
+        # rerouted onto the digital jack
+        self.assertEqual(ics.resolve(digital["key"], outs, "dflt", used={analog["name"]}), digital["name"])
+        self.assertEqual(ics.resolve(analog["key"], outs, "dflt", used={analog["name"]}, strict=True), "")
+        # two controllers, same short port number, and the ".2" counter moved so the
+        # saved node name is gone. A short @port=3 save must not guess which controller;
+        # the full bus path still finds the one the Commander picked.
+        renamed = dict(analog)
+        renamed["name"] = analog["name"] + ".2"
+        renamed["key"] = renamed["name"] + "@bus=" + analog["bus"]
+        other = dict(analog)
+        other["name"] = analog["name"].replace("analog-stereo", "analog-stereo.3")
+        other["bus"] = "pci-0000:03:00.0-usb-0:3:1.0"
+        other["key"] = other["name"] + "@bus=" + other["bus"]
+        both = [o for o in outs if o["name"] != analog["name"]] + [renamed, other]
+        self.assertEqual(ics.resolve(analog["name"] + "@port=3", both, "dflt", strict=True), "")
+        self.assertEqual(ics.resolve(analog["key"], both, "dflt"), renamed["name"])
+        self.assertEqual(ics.resolve(other["key"], both, "dflt"), other["name"])
+        # a taken twin must not be replaced by the other identical headset (core fallback)
+        twin = next(o for o in outs if o["port"] == "4" and "C-Media" in o["name"])
+        self.assertEqual(ics.resolve(analog["name"], outs, "dflt", used={analog["name"]}), "")
+        self.assertNotEqual(twin["name"], analog["name"])
+        # 5.1 / 7.1 sinks are opened at their real channel count (stereo map gets rejected)
+        self.assertEqual(ics.sink_channels("s16le 6ch 48000Hz"), 6)
+        self.assertEqual(ics.sink_channels("s16le 1ch 48000Hz"), 1)
+        self.assertEqual(ics.sink_channels(""), 2)
 
     def test_headset_uses_the_analog_sink_and_channels(self):
         extra = PA_SINKS.replace("Sink #4", """Sink #9

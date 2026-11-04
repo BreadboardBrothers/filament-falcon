@@ -612,36 +612,83 @@ def spec_channels(spec):
     return int(m.group(1)) if m else 2
 
 
+def sink_channels(spec):
+    """Channels to open the sink with. Mono stays mono; 5.1/7.1 stay native (a stereo
+    stream with an explicit map is rejected by PipeWire). Anything else is stereo."""
+    ch = spec_channels(spec)
+    return ch if 1 <= ch <= 8 else 2
+
+
 def split_choice(choice):
-    """Saved pick "node.name@port=3.3.4" -> ("node.name", "3.3.4"). Old saves have no port."""
-    if "@port=" in (choice or ""):
-        a, b = choice.split("@port=", 1)
-        return a, b
-    return choice or "", ""
+    """Saved pick -> (node name, bus path, short port).
+
+    New picks: "node@bus=pci-0000:00:14.0-usb-0:3:1.0" (the whole USB path; the short
+    port number collides across controllers). Older picks: "node@port=3" or a bare name.
+    """
+    choice = choice or ""
+    if "@bus=" in choice:
+        name, bus = choice.split("@bus=", 1)
+        return name, bus, ""
+    if "@port=" in choice:
+        name, port = choice.split("@port=", 1)
+        return name, "", port
+    return choice, "", ""
 
 
 def _family(name):
-    """Node name without the duplicate counter PipeWire/Pulse add to identical cards
-    ("...-00.2.analog-stereo" / "...analog-stereo.2") -> compare two identical headsets."""
-    n = re.sub(r"\.\d+(?=\.|$)", "", name)
-    return n
+    """Node name without the trailing ".2" counter Pulse/PipeWire append when two cards
+    share a USB id. Does NOT strip ".1" in the middle of a name (HDMI port, "pro-output-0"),
+    so analog and iec958 on the same dongle stay different devices."""
+    return re.sub(r"\.\d+$", "", name or "")
+
+
+def _bus_path(props):
+    return props.get("device.bus_path") or props.get("device.bus-path") or ""
+
+
+def _short_port(bus):
+    m = re.search(r"usbv?\d*-\d+:([\d.]+):", bus or "")
+    return m.group(1) if m else ""
+
+
+def _device_key(name, bus, port):
+    if bus:
+        return name + "@bus=" + bus
+    if port:
+        return name + "@port=" + port
+    return name
 
 
 def plain_list(items):
-    """Every real source/sink (no monitors, none of ours) as {name, desc, spec}: the per-station
-    INPUT / OUTPUT pickers. Matched by node NAME (stable across boots), not by index."""
+    """Every real source/sink (no monitors, none of ours) for the MIC IN / AUDIO OUT pickers.
+    The saved key is the node name plus the USB bus path, so a ".2" rename still finds the
+    same jack and a second profile on that jack (analog vs digital) stays a different pick."""
     out = []
     for it in items:
         p = it["props"]
         if it["name"].endswith(".monitor") or p.get("device.class") == "monitor" or it["name"].startswith("falcon_"):
             continue
-        bp = p.get("device.bus_path") or p.get("device.bus-path") or ""
-        m = re.search(r"usb-\d+:([\d.]+):", bp)   # "...-usb-0:3.3.4:1.0" -> "3.3.4"
-        port = m.group(1) if m else ""
-        out.append({"name": it["name"], "desc": it["description"] or it["name"], "spec": it.get("spec", ""), "port": port,
-                    "key": it["name"] + ("@port=" + port if port else ""), "ch": spec_channels(it.get("spec", "")),
+        bus = _bus_path(p)
+        port = _short_port(bus)
+        out.append({"name": it["name"], "desc": it["description"] or it["name"], "spec": it.get("spec", ""),
+                    "bus": bus, "port": port, "key": _device_key(it["name"], bus, port),
+                    "ch": sink_channels(it.get("spec", "")),
                     "mute": it.get("mute", ""), "state": it.get("state", "")})
     return out
+
+
+def _match_group(cands, name, used):
+    """The saved node inside one physical device. Same profile only (family): never the
+    other output on that jack (analog picked, digital returned). Empty if it isn't here
+    or several free nodes still match (two controllers that reported the same short port)."""
+    free = [d for d in cands if d["name"] not in used]
+    exact = [d for d in free if d["name"] == name]
+    if exact:
+        return exact[0]["name"]
+    fam = [d for d in free if _family(d["name"]) == _family(name)]
+    if len(fam) == 1:
+        return fam[0]["name"]
+    return ""
 
 
 def resolve(choice, lst, default_name, used=(), strict=False):
@@ -653,32 +700,36 @@ def resolve(choice, lst, default_name, used=(), strict=False):
         return ""
     if choice == "default":
         return default_name
-    choice, port = split_choice(choice)
-    if port:
-        # Identical USB headsets get node names that only differ by a ".2" counter, assigned in
-        # enumeration order, so after a reboot/replug the NAME can point at the other headset.
-        # The USB port is what the Commander picked: match it first.
-        at = [d for d in lst if d.get("port") == port and d["name"] not in used]
-        for pick in ([d for d in at if d["name"] == choice], [d for d in at if _family(d["name"]) == _family(choice)],
-                     sorted(at, key=lambda d: _node_rank(d["name"]))):
-            if pick:
-                return pick[0]["name"]
+    name, bus, port = split_choice(choice)
+    used = set(used)
+    if bus:
+        hit = _match_group([d for d in lst if d.get("bus") == bus], name, used)
+        if hit:
+            return hit
         if strict:
-            return ""          # first pass: the exact USB port only
-        lst = [d for d in lst if d["name"] not in used]   # never another station's device (its twin)
-    names = [d["name"] for d in lst]
-    if choice in names:
-        return choice
-    for d in lst:                          # name changed between boots: same description
-        if d["desc"] == choice:
+            return ""
+    elif port:
+        group = [d for d in lst if d.get("port") == port]
+        hit = _match_group(group, name, used)
+        if hit:
+            return hit
+        if strict:
+            return ""          # first pass: this USB port only, never a different profile
+    rest = [d for d in lst if d["name"] not in used]
+    names = [d["name"] for d in rest]
+    if name in names:
+        return name
+    for d in rest:                         # name changed between boots: same description
+        if d["desc"] == name or d["desc"] == choice:
             return d["name"]
-    # same card, different profile (e.g. Snowball "...-00.analog-stereo" vs "...-00.mono-fallback")
-    # Only when exactly ONE free device matches: two identical headsets (same serial, names
-    # differ only by ".2") must never be guessed between.
-    core = choice.split(".")[1] if choice.count(".") >= 2 else ""
-    cands = [d["name"] for d in lst if core and core in d["name"] and d["name"] not in used]
-    if len(cands) == 1:
-        return cands[0]
+    # same card, different profile (Snowball analog-stereo -> mono-fallback). Only when the
+    # core matches exactly one device in the whole list: if a taken twin also matches, the
+    # remaining one is the other headset and must not be guessed.
+    core = name.split(".")[1] if name.count(".") >= 2 else ""
+    all_core = [d["name"] for d in lst if core and core in d["name"]]
+    free_core = [n for n in all_core if n not in used]
+    if len(all_core) == 1 and free_core:
+        return free_core[0]
     return ""
 
 
@@ -863,8 +914,8 @@ class Playback(threading.Thread):
                         x = np.zeros(BLOCK)
                         time.sleep(BLOCK / RATE * 0.5)
                     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2")
-                    if self.channels == 2:
-                        pcm = np.repeat(pcm, 2)          # same voice in both ears
+                    if self.channels > 1:
+                        pcm = np.repeat(pcm, self.channels)   # same voice in every channel
                     self.proc.stdin.write(pcm.tobytes())
                     self.proc.stdin.flush()
                     self.last_write = time.monotonic()
@@ -1123,7 +1174,7 @@ class Helper:
             self.caps[seat].start()
         if dev.get("sink"):
             o = next((d for d in getattr(self, "outputs", []) if d["name"] == dev["sink"]), {})
-            ch = 1 if int(o.get("ch", 2) or 2) == 1 else 2       # mono-fallback profile: 1; stereo / surround: L+R
+            ch = sink_channels(o.get("spec", "")) if o else 2
             if not dev["sink"].startswith("@"):
                 run(["pactl", "suspend-sink", dev["sink"], "0"])
                 if "yes" in run(["pactl", "get-sink-mute", dev["sink"]])[1]:
