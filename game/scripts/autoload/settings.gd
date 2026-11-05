@@ -58,15 +58,14 @@ const DEFAULTS := {
 	# travel_s = how long one motion takes (pod or cradle, ~35-40 s); up_sense = whether the
 	# optional POD_UP_LOCKED contact is wired: auto (yes once it has been seen closed) | yes | no.
 	"pod": {"travel_s": 40.0, "up_sense": "auto", "callouts": true},
-	# Intercom (tools/falcon_ics.py). <seat>_headset = "product|serial|usb-path" picked on
-	# Commander > ICS. Per seat: mode vox|ptt, vox_db threshold, attack_ms, hang_ms, game_vol,
-	# ics_vol, sidetone (0 = off), mic_gain. Global radio effect toggles.
+	# Intercom (tools/falcon_ics.py). MIC IN / AUDIO OUT per seat are the routing
+	# ("none" | "default" | "node@bus=<usb path>"). *_headset is legacy (migrated into in/out).
+	# Per seat: mode vox|ptt, vox_db, attack_ms, hang_ms, game_vol, ics_vol, sidetone, mic_gain.
 	"ics": {
 		"enabled": true, "udp_port": 47810, "game_port": 47811,
 		"pilot_headset": "", "ops_headset": "", "commander_headset": "",
-		# per-station INPUT / OUTPUT override: "" = the seat's headset, "none", "default",
-		# or "node@bus=<usb path>" (older saves: "node@port=<short port>" or a bare node name)
-		"pilot_in": "", "pilot_out": "", "ops_in": "", "ops_out": "", "commander_in": "", "commander_out": "", "eva_in": "", "eva_out": "",
+		"pilot_in": "none", "pilot_out": "none", "ops_in": "none", "ops_out": "none",
+		"commander_in": "none", "commander_out": "none", "eva_in": "none", "eva_out": "none",
 		"radio_fx": true, "static": true, "squelch_tail": true, "beeps": true, "speakers": true,
 		"audio_quality": "high",   # low | normal | high | hifi  (ICS radio band / compression / static)
 		"mc_vol": 0.9, "allcall_duck": 0.25,

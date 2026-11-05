@@ -794,8 +794,8 @@ def _match_group(cands, name, used):
 
 
 def resolve(choice, lst, default_name, used=(), strict=False):
-    """choice: "" (follow the seat's headset), "none", "default", or a node name. Returns a
-    device name, "" (nothing) or None (= use the headset). Falls back from name to description."""
+    """choice: "" (legacy follow-headset → None), "none", "default", or a node name.
+    Returns a device name, "" (nothing), or None (= use the seat's legacy headset if any)."""
     if choice in ("", None):
         return None
     if choice == "none":
@@ -1246,14 +1246,20 @@ class Helper:
             if snk is None:
                 snk = hs.get("sink", "")
                 snk = "" if snk in used_out else snk
+            # WiVRn → SPACEWALKER when that seat has no mic/out and no legacy headset
+            if s == "eva" and not src and not snk and not hs:
+                q = next((d for d in self.devs if d.get("path") == "wivrn"), None)
+                if q:
+                    src = q.get("source", "") if q.get("source", "") not in used_in else ""
+                    snk = q.get("sink", "") if q.get("sink", "") not in used_out else ""
             if src and src != dsrc:
                 used_in.add(src)
             if snk and snk != dsink:
                 used_out.add(snk)
             route = (src, snk)
             if self.routes.get(s) != route:
-                log(f"{s}: route  in={src or '-'}  out={snk or '-'}  (picked in={self.cfg.get(s + '_in', '') or 'headset'}"
-                    f" out={self.cfg.get(s + '_out', '') or 'headset'}; default sink {dsink or '?'})")
+                log(f"{s}: route  in={src or '-'}  out={snk or '-'}  (picked in={self.cfg.get(s + '_in', '') or 'legacy-headset'}"
+                    f" out={self.cfg.get(s + '_out', '') or 'legacy-headset'}; default sink {dsink or '?'})")
             pl = self.plays.get(s)
             dead = (snk and (pl is None or not pl.is_alive())) or (src and (s not in self.caps or not self.caps[s].is_alive()))
             if self.routes.get(s) != route or (any(route) and not self.args.mock and dead):

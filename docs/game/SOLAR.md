@@ -12,6 +12,10 @@ True-scale solar-system visualizer on **Commander → SOLAR**. Offline by defaul
 - **Orbit lines update with time**: planet polylines resample as JD changes; moon orbits are drawn relative to the parent’s **current** position so they travel with the planet. Bodies stay on their lines.
 - **SHIP PATH** default **off** (the old orange/yellow trajectory + tall ticks looked like “yellow lines from Earth”).
 
+## Camera
+- **Free flight:** WASD/QE move, hold right mouse to look, wheel zoom.
+- **Attached** (ATTACH / ATTACH ROT): left- or right-drag **orbits** around the body (yaw/pitch, clamped so it does not flip at the poles); **wheel** zooms on a log scale (min just above the surface, max far enough to see its moons). Orbit angles and distance are kept as the body moves. Smoothing eases the motion. **Shift+drag** or **middle-drag** pans (and detaches). **WASD/QE** detaches into free flight.
+
 ## Yellow lines (fixed)
 **Root cause:** `_update_ship()` drew the predicted ship trajectory in orange (`Color(1.0, 0.55, 0.15)`) plus long vertical yellow tick marks (`Color(1.0, 0.8, 0.3)`) from the geocentric ship state near Earth, and `show_ship_path` defaulted to **true**.  
 **Fix:** default off; short cyan ticks; enable only via **SHIP PATH**.
@@ -43,7 +47,7 @@ Bundled (no download): `game/data/solar/sky_stars.json`, `sky_galaxies.json`, `f
 XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --solar-test
 XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --ui-fit
 ```
-`--solar-test` covers ephemeris, clips, half-screen warp, separate Sun exag + moon orbit exag, body-on-orbit across scrubbed times, parent-attached moon orbits, sky catalogs, ship-path default.
+`--solar-test` covers ephemeris, clips, half-screen warp, separate Sun exag + moon orbit exag, body-on-orbit across scrubbed times, parent-attached moon orbits, sky catalogs, ship-path default, attach orbit/zoom + WASD detach.
 
 ## Files
 - `game/data/solar/catalog.json`, `facts.json`, `sky_stars.json`, `sky_galaxies.json`

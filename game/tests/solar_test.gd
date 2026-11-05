@@ -160,6 +160,26 @@ func _run() -> void:
 	sv.attach("earth")
 	await _frames(2)
 	_check(sv.follow_id == "earth", "attach earth")
+	var yaw0 := sv._yaw
+	var pitch0 := sv._pitch
+	var dist0 := sv._dist
+	sv._yaw_goal = yaw0 + 0.4
+	sv._pitch_goal = clampf(pitch0 - 0.2, -1.2, 1.2)
+	sv._dist_goal = sv._clamp_attach_dist(dist0 * 1.5)
+	await _frames(10)
+	_check(absf(sv._yaw - yaw0) > 0.05, "attach orbit yaw moves toward goal")
+	_check(absf(sv._dist - dist0) > 1.0, "attach zoom distance moves toward goal")
+	var focus0 := sv._focus
+	sv.jd += 0.5
+	sv._update_follow()
+	_check(sv.follow_id == "earth", "still attached after body time step")
+	_check(absf(sv._yaw_goal - (yaw0 + 0.4)) < 0.001, "orbit yaw goal retained while body moves")
+	_check(sv._dist_goal > sv._attach_min_dist() * 0.99, "zoom above surface min")
+	# WASD detaches
+	sv._keys["W"] = true
+	sv._update_camera(0.05)
+	sv._keys["W"] = false
+	_check(sv.follow_id == "", "WASD detaches from object")
 	sv.queue_free()
 	await _frames(2)
 	print("SOLAR TEST: ", "PASS" if _ok else "FAIL")

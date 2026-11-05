@@ -417,42 +417,34 @@ func _station_card(parent: Control, s: String) -> void:
 		var on := bool(st.get("open", false))
 		air.text = ("● ON AIR" if on else "○ quiet") + ("  MUTED" if Ics.mute.get(s, false) else "") + "  %d dB" % int(float(st.get("level", -90.0)))
 		air.add_theme_color_override("font_color", C_GREEN if on else C_DIM)
-	# headset
-	var hr := hbox(c, 6)
-	var hl := label("HEADSET", 16, C_DIM, false)
-	hl.custom_minimum_size.x = 110
-	hr.add_child(hl)
-	var lb := button("◀", func() -> void: Ics.cycle_headset(s, -1), 18, 40)
-	lb.custom_minimum_size.x = 44
-	hr.add_child(lb)
-	var hv := label("", 17, C_GREEN, false)
-	hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hv.custom_minimum_size.x = 160
-	hv.clip_text = true
-	hr.add_child(hv)
-	var rb := button("▶", func() -> void: Ics.cycle_headset(s, 1), 18, 40)
-	rb.custom_minimum_size.x = 44
-	hr.add_child(rb)
-	hr.add_child(button("IDENTIFY", func() -> void: Ics.identify_seat(s), 15, 40))   # through this station's AUDIO OUT
-	live["hs_card_" + s] = func() -> void:
-		var id := str(Settings.get_v("ics", s + "_headset"))
-		hv.text = Ics.device_label(id)
-		hv.add_theme_color_override("font_color", C_GREEN if bool(Ics.seat(s).get("connected", false)) else (C_AMBER if id != "" else C_DIM))
-	# MIC IN / AUDIO OUT dropdowns (free devices only)
-	for kind: String in ["in", "out"]:
-		var r := hbox(c, 6)
-		var l := label("MIC IN" if kind == "in" else "AUDIO OUT", 16, C_DIM, false)
-		l.custom_minimum_size.x = 110
-		r.add_child(l)
-		r.add_child(_io_picker(s, kind))
+	# MIC IN live level ABOVE the selector (so the bar is obviously the mic)
+	var min_row := hbox(c, 6)
+	var min_lbl := label("MIC IN level", 14, C_DIM, false)
+	min_lbl.custom_minimum_size.x = 110
+	min_row.add_child(min_lbl)
 	var lm := level_meter(s)
-	lm.custom_minimum_size = Vector2(200, 26)
-	c.add_child(lm)
-	# output: what the helper is writing to this station's AUDIO OUT + the stream state
+	lm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lm.custom_minimum_size = Vector2(160, 22)
+	min_row.add_child(lm)
+	var in_row := hbox(c, 6)
+	var in_l := label("MIC IN", 16, C_DIM, false)
+	in_l.custom_minimum_size.x = 110
+	in_row.add_child(in_l)
+	in_row.add_child(_io_picker(s, "in"))
+	# AUDIO OUT selector, then its live level bar BELOW
+	var out_row := hbox(c, 6)
+	var out_l := label("AUDIO OUT", 16, C_DIM, false)
+	out_l.custom_minimum_size.x = 110
+	out_row.add_child(out_l)
+	out_row.add_child(_io_picker(s, "out"))
+	out_row.add_child(button("IDENTIFY", func() -> void: Ics.identify_seat(s), 15, 40))
 	var orow := hbox(c, 6)
+	var out_ml := label("OUT level", 14, C_DIM, false)
+	out_ml.custom_minimum_size.x = 110
+	orow.add_child(out_ml)
 	var om := LevelMeter.new()
 	om.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	om.custom_minimum_size = Vector2(120, 14)
+	om.custom_minimum_size = Vector2(160, 18)
 	om.getter = func() -> Array:
 		var st := Ics.seat(s)
 		return [float(st.get("out_level", -90.0)), str(st.get("out_state", "")) == "playing", -99.0]
@@ -494,7 +486,7 @@ func _station_card(parent: Control, s: String) -> void:
 	setting_stepper(gg, "ics", s + "_sidetone", "Sidetone", 0.05, 0.0, 0.5, "%.2f|OFF", 100, 16)
 
 
-## Dropdown of: Headset / None / System default / every device no other station uses.
+## Dropdown of: None / System default / every device no other station uses.
 ## Rebuilt whenever the helper's device list or any station's pick changes.
 func _io_picker(s: String, kind: String) -> OptionButton:
 	var ob := OptionButton.new()
@@ -507,6 +499,8 @@ func _io_picker(s: String, kind: String) -> OptionButton:
 	var rebuild := func() -> void:
 		var opts := Ics.io_options(s, kind)   # [[value, text], ...]
 		var cur := str(Settings.get_v("ics", key))
+		if cur == "":
+			cur = "none"
 		var sg := JSON.stringify([opts, cur])
 		if sg == sig[0] or ob.get_popup().visible:
 			return
@@ -528,59 +522,24 @@ func _io_picker(s: String, kind: String) -> OptionButton:
 	return ob
 
 
-## Seat -> headset rows (used on ICS and SETUP).
-func _headset_rows(parent: Control, meters: bool) -> void:
+## SETUP: short per-seat IDENTIFY (through AUDIO OUT). Full MIC IN / AUDIO OUT pickers live on ICS.
+func _ics_setup_rows(parent: Control) -> void:
 	for s: String in Ics.SEATS:
 		var row := hbox(parent, 6)
 		var l := label(Ics.SEAT_NAMES[s], 20, SEAT_COL[s], false)
 		l.custom_minimum_size.x = 120
 		row.add_child(l)
-		var lb := button("◀", func() -> void: Ics.cycle_headset(s, -1), 22, 50)
-		lb.custom_minimum_size.x = 56
-		row.add_child(lb)
-		var val := label("", 18, C_GREEN)
+		var val := label("", 16, C_DIM)
 		val.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		val.custom_minimum_size.x = 140
-		val.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		val.clip_text = true
 		row.add_child(val)
-		var rb := button("▶", func() -> void: Ics.cycle_headset(s, 1), 22, 50)
-		rb.custom_minimum_size.x = 56
-		row.add_child(rb)
-		row.add_child(button("IDENTIFY", func() -> void:
-			Ics.identify(str(Settings.get_v("ics", s + "_headset"))), 18, 50))
-		if meters:
-			var m := level_meter(s)
-			m.custom_minimum_size = Vector2(120, 18)
-			parent.add_child(m)
-		# per-station INPUT / OUTPUT pickers live on the ICS page station cards
-		for kind: String in []:
-			var r2 := hbox(parent, 6)
-			var k2 := kind
-			var l2 := label("   MIC IN" if kind == "in" else "   AUDIO OUT", 16, C_DIM, false)
-			l2.custom_minimum_size.x = 120
-			r2.add_child(l2)
-			var b1 := button("◀", func() -> void: Ics.cycle_io(s, k2, -1), 18, 40)
-			b1.custom_minimum_size.x = 48
-			r2.add_child(b1)
-			var v2 := label("", 16, C_GREEN)
-			v2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			v2.clip_text = true
-			r2.add_child(v2)
-			var b2 := button("▶", func() -> void: Ics.cycle_io(s, k2, 1), 18, 40)
-			b2.custom_minimum_size.x = 48
-			r2.add_child(b2)
-			if kind == "in":
-				var m2 := level_meter(s)   # live mic level: watch it move when you talk
-				m2.custom_minimum_size = Vector2(140, 16)
-				r2.add_child(m2)
-			live["io_%s_%s_%d" % [s, kind, r2.get_instance_id()]] = func() -> void:
-				v2.text = Ics.io_label(s, k2)
-		live["hs_%s_%d" % [s, row.get_instance_id()]] = func() -> void:
-			var id := str(Settings.get_v("ics", s + "_headset"))
-			var st := Ics.seat(s)
-			val.text = Ics.device_label(id)
-			var conn := bool(st.get("connected", false))
-			val.add_theme_color_override("font_color", C_GREEN if conn else (C_AMBER if id != "" else C_DIM))
+		row.add_child(button("IDENTIFY", func() -> void: Ics.identify_seat(s), 18, 50))
+		live["ics_setup_%s_%d" % [s, row.get_instance_id()]] = func() -> void:
+			var out := Ics.io_label(s, "out")
+			var inn := Ics.io_label(s, "in")
+			val.text = "IN %s  ·  OUT %s" % [inn, out]
+			var conn := bool(Ics.seat(s).get("connected", false))
+			val.add_theme_color_override("font_color", C_GREEN if conn else C_DIM)
 
 
 # ======================================================================== MISSION CONTROL
@@ -1775,7 +1734,7 @@ func _build_solar(page: Control) -> void:
 		sv.attach(id, true), 14, 36))
 	att.add_child(button("DETACH", func() -> void: sv.detach(), 14, 36))
 	# camera speed
-	side.add_child(label("CAMERA SPEED (WASD/QE, RMB look, wheel zoom)", 16, C_DIM, false))
+	side.add_child(label("CAMERA (WASD free · attached: drag orbit · wheel zoom)", 16, C_DIM, false))
 	var sp := HFlowContainer.new()
 	sp.add_theme_constant_override("h_separation", 6)
 	sp.add_theme_constant_override("v_separation", 6)
@@ -1792,7 +1751,7 @@ func _build_solar(page: Control) -> void:
 	pred.add_child(label("PATH SPAN", 14, C_DIM, false))
 	for pair2: Array in [["1 d", 86400.0], ["7 d", 86400.0 * 7], ["30 d", 86400.0 * 30], ["1 y", 86400.0 * 365.25]]:
 		pred.add_child(button(str(pair2[0]), func() -> void: sv.pred_span_s = float(pair2[1]), 13, 34))
-	var stl := label("WASD move · Q/E up/down · hold right mouse to look · scroll zoom", 14, C_DIM)
+	var stl := label("Free: WASD/QE move · RMB look · wheel zoom. Attached: LMB/RMB orbit · wheel zoom · Shift/MMB pan · WASD detaches.", 14, C_DIM)
 	side.add_child(stl)
 	_ar["solar_status"] = stl
 	sv.set_to_now()
@@ -1897,10 +1856,10 @@ func _build_setup(page: Control) -> void:
 	var info := label("", 20)
 	b.add_child(info)
 	b.add_child(button("QUIT GAME", func() -> void: Game.quit_game(), 22, 56))
-	var c := panel(h, "HEADSETS + PANELS", true, true, C_AMBER)
+	var c := panel(h, "INTERCOM + PANELS", true, true, C_AMBER)
 	c.get_parent().size_flags_stretch_ratio = 1.1
-	c.add_child(label("Intercom headset per seat (matched by name + USB serial/port, so re-plugging keeps them). IDENTIFY beeps in that headset.", 17, C_DIM))
-	_headset_rows(c, false)
+	c.add_child(label("Pick MIC IN / AUDIO OUT on the ICS page (one device per station). IDENTIFY plays through that seat's AUDIO OUT.", 17, C_DIM))
+	_ics_setup_rows(c)
 	var cr := hbox(c, 6)
 	var rsb := button("RESCAN", func() -> void: Ics.rescan(), 20, 52)
 	rsb.size_flags_horizontal = Control.SIZE_EXPAND_FILL

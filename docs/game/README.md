@@ -167,15 +167,14 @@ All views render at native 1920x1080 (the console also works in portrait, 1080x1
   Same thing from a terminal: `python3 tools/area_manager.py status` / `run --wait`. See [REAL_EARTH.md](REAL_EARTH.md).
   With an OSM map layer built (BUILD MAP LAYER on the map, or `tools/map_layer.py`) the map shows roads, rivers,
   lakes and city / town / village names by zoom ([REAL_EARTH.md](REAL_EARTH.md#areas-map-layer-toolsmap_layerpy-runs-on-the-game-pc)).
-- **SOLAR**: true-scale solar-system visualizer (Keplerian ephemeris, moons, orbit lines, time scrub / rates, warp + attach, ship trajectory). Textures via `tools/fetch_solar_assets.sh`. See `SOLAR.md`.
+- **SOLAR**: true-scale solar-system visualizer (Keplerian ephemeris, moons, orbit lines, time scrub / rates, warp + attach with mouse orbit/zoom while attached, ship trajectory). Textures via `tools/fetch_solar_assets.sh`. See `SOLAR.md`.
 
-- **ICS**: the intercom: headset per seat (◀ ▶, IDENTIFY through that station's AUDIO OUT, RESCAN), mic level
-  meters, OUT meter + stream state per station, VOX/PTT, VOX level / attack /
+- **ICS**: the intercom: per seat **MIC IN** / **AUDIO OUT** pickers (None / System default / free devices; one device per station), live **MIC IN level** bar above the mic picker and **OUT level** bar below the out picker, IDENTIFY through that station's AUDIO OUT, RESCAN, VOX/PTT, VOX level / attack /
   hang, mic gain, intercom and game volume, sidetone per seat; radio effect, static, squelch tail, click + roger,
   room speakers, callout volume, ALL-CALL duck, and **AUDIO QUALITY** (LOW / NORMAL / HIGH / HI-FI) for the
-  radio band and compression (see [AUDIO_TROUBLESHOOTING.md](AUDIO_TROUBLESHOOTING.md)).
+  radio band and compression (see [AUDIO_TROUBLESHOOTING.md](AUDIO_TROUBLESHOOTING.md)). (Legacy headset pairing was removed — mic/out already configure audio.)
 - **SETUP**: screen roles, layout mode, quality, FPS cap, vsync, fullscreen, LED link, window geometry, QUIT;
-  headset per seat; ALWAYS SHOW virtual panels; crew-position options (callouts, travel time, UP sense fitted).
+  intercom IDENTIFY shortcuts (full MIC IN / AUDIO OUT on ICS); ALWAYS SHOW virtual panels; crew-position options (callouts, travel time, UP sense fitted).
 
 ### Which screen gets which role
 
@@ -497,11 +496,10 @@ headset can be picked for SPACEWALKER instead. MUTE EVA appears on MISSION CONTR
 **Setup (once).**
 1. `sudo apt install python3-numpy pulseaudio-utils` (on plain PulseAudio systems the server is already there;
    on PipeWire make sure `pipewire-pulse` is installed, which it is on Mint 22).
-2. Plug in the three headsets, start the game, open Commander → **ICS** (or SETUP → HEADSETS).
-3. For each seat press ◀ ▶ until the right headset shows, then **IDENTIFY**: a tone plays in that headset
-   only. Headsets are saved by product name + USB serial + USB port, so unplugging/replugging or a different
-   plug-in order keeps the assignment. Two identical headsets without serial numbers are told apart by their
-   USB port, so keep each one in the same port.
+2. Plug in the three headsets, start the game, open Commander → **ICS**.
+3. For each seat pick **MIC IN** and **AUDIO OUT** (None / System default / a free device). A device already
+   used by another seat is skipped, never stolen. Picks are saved by node + USB bus path so re-plugging keeps
+   them. Press **IDENTIFY** to play a tone through that seat's AUDIO OUT only.
 4. Talk into each mic and set the VOX level so the meter crosses the white tick when talking but not when
    breathing; or switch that seat to PTT.
 

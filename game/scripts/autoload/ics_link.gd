@@ -77,6 +77,7 @@ func start(use_mock: bool) -> void:
 	_tx.set_dest_address("127.0.0.1", int(Settings.get_v("ics", "udp_port")))
 	_t0 = _now()
 	state_text = "waiting for the helper"
+	_migrate_headset_to_io()
 	_hello()
 
 
@@ -280,7 +281,8 @@ func toggle_mute(s: String) -> void:
 	Voice.say("%s microphone %s" % [SEAT_NAMES[s], "muted" if mute[s] else "on"])
 
 
-## SETUP: step a seat through the detected headsets (and "none").
+## Legacy: headset pairing was removed from the UI. MIC IN / AUDIO OUT are the real routing.
+## Kept so old callers / saves still resolve; prefer cycle_io / set_cfg on *_in / *_out.
 func cycle_headset(s: String, d: int) -> void:
 	var ids: Array = [""]
 	for dv in devices:
@@ -288,52 +290,52 @@ func cycle_headset(s: String, d: int) -> void:
 		for o in SEATS:
 			if o != s and str(Settings.get_v("ics", o + "_headset")) == str(dv["id"]):
 				taken = true
-		if not taken:   # skip headsets other seats use: never steal (USB port path keeps ids stable)
+		if not taken:
 			ids.append(str(dv["id"]))
 	var cur := str(Settings.get_v("ics", s + "_headset"))
 	var i := ids.find(cur)
 	if i < 0:
 		i = 0
-	var nxt: String = ids[posmod(i + d, ids.size())]
-	set_cfg(s + "_headset", nxt)
+	set_cfg(s + "_headset", ids[posmod(i + d, ids.size())])
 
 
-## Step a station's INPUT ("in") or OUTPUT ("out") through: headset, none, system default,
+## Step a station's INPUT ("in") or OUTPUT ("out") through: none, system default,
 ## then every device not already picked by another station (never steals one).
 func cycle_io(s: String, kind: String, d: int) -> void:
 	var lst: Array = inputs if kind == "in" else outputs
-	var opts: Array = ["", "none", "default"]
+	var opts: Array = ["none", "default"]
 	for dv: Dictionary in lst:
 		if not _io_taken(s, kind, dv):
 			opts.append(io_value(dv))
 	var cur := str(Settings.get_v("ics", "%s_%s" % [s, kind]))
+	if cur == "":
+		cur = "none"
 	var cd := _io_find(kind, cur)
 	var i := opts.find(io_value(cd) if not cd.is_empty() else cur)
 	if i < 0:
 		i = 0
-	set_cfg("%s_%s" % [s, kind], opts[posmod(i + d, opts.size())])   # saved + sent live
+	set_cfg("%s_%s" % [s, kind], opts[posmod(i + d, opts.size())])
 
 
-## [[value, text]] for a station's dropdown: Headset, None, System default, then devices no
-## other station has picked (plus this station's own pick, even if unplugged).
+## [[value, text]] for a station's dropdown: None, System default, then free devices
+## (plus this station's own pick, even if unplugged). One device per station.
 func io_options(s: String, kind: String) -> Array:
 	var lst: Array = inputs if kind == "in" else outputs
-	var opened: Array = routes.get(s, ["", ""])
-	var now := str(opened[0 if kind == "in" else 1]) if opened.size() == 2 else ""
-	var hs := "Headset" + ("  → " + friendly(now, kind) if now != "" and str(Settings.get_v("ics", "%s_%s" % [s, kind])) == "" else "")
-	var out: Array = [["", hs], ["none", "None"], ["default", "System default"]]
+	var out: Array = [["none", "None"], ["default", "System default"]]
 	var cur := str(Settings.get_v("ics", "%s_%s" % [s, kind]))
-	var have_cur := cur in ["", "none", "default"]
+	if cur == "":
+		cur = "none"
+	var have_cur := cur in ["none", "default"]
 	var owner := _io_find(kind, cur)
 	for dv: Dictionary in lst:
 		if _io_taken(s, kind, dv):
 			continue
 		var val := io_value(dv)
 		if not owner.is_empty() and str(dv.get("name", "")) == str(owner.get("name", "")):
-			val = cur          # keep the saved value selected after a ".2" rename
+			val = cur
 		out.append([val, friendly(val, kind)])
 		have_cur = have_cur or val == cur
-	if not have_cur:
+	if not have_cur and cur != "":
 		out.append([cur, friendly(cur, kind) + "  (not plugged in)"])
 	return out
 
@@ -366,9 +368,7 @@ func io_label(s: String, kind: String) -> String:
 		var fd := _io_find(kind, nm)
 		return str(fd["desc"]) if not fd.is_empty() else str(_choice_parts(nm)["name"])
 	match cur:
-		"":
-			return "Headset" + ("  → " + pretty.call(now) if now != "" else "  (none)")
-		"none":
+		"", "none":
 			return "None"
 		"default":
 			return "System default" + ("  → " + pretty.call(now) if now != "" else "")
@@ -405,6 +405,7 @@ func _process(dt: float) -> void:
 				outputs = d.get("outputs", [])
 				routes = d.get("routes", {})
 				assign = d.get("assign", {})
+				_migrate_headset_to_io()
 				devices_changed.emit()
 			"record":
 				recorded.emit(str(d.get("path", "")), float(d.get("secs", 0.0)))
@@ -460,6 +461,53 @@ func _route_audio() -> void:
 		print("[ICS] game audio -> ", AudioServer.output_device)
 
 
+
+## One-time (and on each device list): if a seat still has a legacy *_headset and empty
+## *_in / *_out, copy that headset's source/sink into the IO picks, then clear *_headset.
+## Keeps one-device-per-station and IDENTIFY-via-AUDIO-OUT working after the headset UI went away.
+func _migrate_headset_to_io() -> void:
+	var dirty := false
+	for s in SEATS:
+		var hid := str(Settings.get_v("ics", s + "_headset"))
+		if hid == "":
+			# normalize legacy empty IO ("follow headset") to explicit none
+			if str(Settings.get_v("ics", s + "_in")) == "":
+				Settings.set_v("ics", s + "_in", "none", false)
+				dirty = true
+			if str(Settings.get_v("ics", s + "_out")) == "":
+				Settings.set_v("ics", s + "_out", "none", false)
+				dirty = true
+			continue
+		var dev := {}
+		for dv in devices:
+			if str(dv.get("id", "")) == hid:
+				dev = dv
+				break
+		if dev.is_empty():
+			continue
+		var src := str(dev.get("source", ""))
+		var snk := str(dev.get("sink", ""))
+		if str(Settings.get_v("ics", s + "_in")) == "" and src != "":
+			var fd := _io_find("in", src)
+			Settings.set_v("ics", s + "_in", io_value(fd) if not fd.is_empty() else src, false)
+			dirty = true
+		elif str(Settings.get_v("ics", s + "_in")) == "":
+			Settings.set_v("ics", s + "_in", "none", false)
+			dirty = true
+		if str(Settings.get_v("ics", s + "_out")) == "" and snk != "":
+			var fd2 := _io_find("out", snk)
+			Settings.set_v("ics", s + "_out", io_value(fd2) if not fd2.is_empty() else snk, false)
+			dirty = true
+		elif str(Settings.get_v("ics", s + "_out")) == "":
+			Settings.set_v("ics", s + "_out", "none", false)
+			dirty = true
+		Settings.set_v("ics", s + "_headset", "", false)
+		dirty = true
+	if dirty:
+		Settings.save()
+		_send({"cmd": "cfg", "values": config_values()})
+
+
 ## Screenshots / UI tests: plausible status without a helper.
 func inject_demo() -> void:
 	_demo = true
@@ -469,8 +517,25 @@ func inject_demo() -> void:
 		{"id": "Logitech USB Headset|Logitech_Logitech_USB_Headset|pci-0000:0e:00.3-usb-0:2:1.0", "label": "Logitech USB Headset  (USB 0:2:1.0)"},
 		{"id": "Meta Quest (WiVRn)||wivrn", "label": "Meta Quest 3 (WiVRn audio)"}]
 	assign = {"pilot": devices[0]["id"], "ops": devices[1]["id"], "commander": devices[2]["id"], "eva": devices[3]["id"]}
+	inputs = [
+		{"name": "alsa_input.usb-pilot", "desc": "Pilot mic", "key": "alsa_input.usb-pilot"},
+		{"name": "alsa_input.usb-ops", "desc": "Ops mic", "key": "alsa_input.usb-ops"},
+		{"name": "alsa_input.usb-commander", "desc": "Commander mic", "key": "alsa_input.usb-commander"},
+		{"name": "WiVRn(microphone)", "desc": "WiVRn mic", "key": "WiVRn(microphone)"}]
+	outputs = [
+		{"name": "alsa_output.usb-pilot", "desc": "Pilot headset", "key": "alsa_output.usb-pilot"},
+		{"name": "alsa_output.usb-ops", "desc": "Ops headset", "key": "alsa_output.usb-ops"},
+		{"name": "alsa_output.usb-commander", "desc": "Commander headset", "key": "alsa_output.usb-commander"},
+		{"name": "WiVRn", "desc": "WiVRn", "key": "WiVRn"}]
+	routes = {
+		"pilot": ["alsa_input.usb-pilot", "alsa_output.usb-pilot"],
+		"ops": ["alsa_input.usb-ops", "alsa_output.usb-ops"],
+		"commander": ["alsa_input.usb-commander", "alsa_output.usb-commander"],
+		"eva": ["WiVRn(microphone)", "WiVRn"]}
 	for i in 4:
-		Settings.set_v("ics", SEATS[i] + "_headset", devices[i]["id"], false)
+		Settings.set_v("ics", SEATS[i] + "_headset", "", false)
+		Settings.set_v("ics", SEATS[i] + "_in", str(inputs[i]["key"]), false)
+		Settings.set_v("ics", SEATS[i] + "_out", str(outputs[i]["key"]), false)
 	Settings.set_v("ics", "enabled", true, false)
 	status = {"ok": true, "msg": "running on PulseAudio (on PipeWire 1.0.5)", "server": "PulseAudio (on PipeWire 1.0.5)", "xruns": 0, "latency_ms": 35,
 		"game_sink": "falcon_game", "mc_sink": "falcon_mc",

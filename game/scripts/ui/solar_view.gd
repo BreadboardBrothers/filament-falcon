@@ -4,6 +4,7 @@ extends Control
 ## SolarEphemeris, orbit lines, warp/follow, time scrub, WASD+mouse camera, ship trajectory.
 ## Floating origin + scene-unit scaling + distant impostors keep depth precision across AU↔km.
 ## Hover ray-pick shows a fact card; warp frames the lit hemisphere at ~half screen height.
+## While attached: LMB/RMB orbit (yaw/pitch, no pole flip), wheel log-zoom, optional Shift/MMB pan; WASD detaches.
 ## Labels, sky (stars/galaxies/Milky Way), separate Sun exaggeration, live orbit rebuild.
 
 signal time_changed(jd: float)
@@ -40,7 +41,7 @@ var show_constellations := false
 var show_galaxies := true
 var follow_id := ""
 var follow_rotating := false
-var follow_keep_lit := true
+var follow_keep_lit := false  # lit framing on attach only; mouse keeps orbit/zoom
 var pred_span_s := DAY * 7.0
 var cam_speed := 5e5
 var auto_speed := true
@@ -59,6 +60,12 @@ var _pitch := -0.4
 var _dist := AU_KM * 3.0
 var _look := Vector3.ZERO
 var _rmb := false
+var _lmb := false
+var _mmb := false
+var _yaw_goal := 0.3
+var _pitch_goal := -0.4
+var _dist_goal := AU_KM * 3.0
+var _orbit_smooth := 12.0
 var _keys := {}
 var _tex_cache := {}
 var _mat_body: Shader
@@ -306,11 +313,12 @@ func attach(id: String, rotating := false) -> void:
 		return
 	follow_id = id
 	follow_rotating = rotating
+	follow_keep_lit = false
 	var st := eph.state(id, jd) if id != "sun" else {"pos": Vector3.ZERO, "ok": true}
 	if st.get("ok", false) or id == "sun":
 		_apply_lit_framing(id, st.get("pos", Vector3.ZERO))
 		_force_orbit_rebuild()
-	status.emit(("attached (rotating)" if rotating else "attached") + " to " + id)
+	status.emit(("attached (rotating)" if rotating else "attached") + " to " + id + " · drag orbit · wheel zoom")
 
 
 func detach() -> void:
@@ -327,6 +335,9 @@ func _apply_lit_framing(id: String, body_pos: Vector3) -> void:
 	var dir := from_sun.normalized()
 	_pitch = asin(clampf(dir.y, -0.99, 0.99))
 	_yaw = atan2(-dir.x, -dir.z)
+	_yaw_goal = _yaw
+	_pitch_goal = _pitch
+	_dist_goal = _dist
 
 
 func _force_orbit_rebuild() -> void:
@@ -602,7 +613,7 @@ func _process(dt: float) -> void:
 		_hover_idle_t = maxf(_hover_idle_t - dt, 0.0)
 		if _hover_idle_t == 0.0:
 			_moving_hide = false
-	if _mouse_in and not _rmb and not _moving_hide:
+	if _mouse_in and not _rmb and not _lmb and not _mmb and not _moving_hide:
 		_update_hover(_last_mouse)
 
 
@@ -698,9 +709,23 @@ func _update_camera(dt: float) -> void:
 	if _keys.get("D", false): move += right
 	if _keys.get("Q", false): move -= up
 	if _keys.get("E", false): move += up
-	if move != Vector3.ZERO and follow_id == "":
+	if move != Vector3.ZERO:
+		if follow_id != "":
+			detach()
 		_focus += move.normalized() * spd * dt
 		_force_orbit_rebuild()
+	# Smooth orbit/zoom toward goals (retains angles/distance while the body moves via _update_follow)
+	var k := 1.0 - exp(-_orbit_smooth * dt)
+	if follow_id != "":
+		_yaw = lerpf(_yaw, _yaw_goal, k)
+		_pitch = lerpf(_pitch, _pitch_goal, k)
+		_dist_goal = _clamp_attach_dist(_dist_goal)
+		_dist = lerpf(_dist, _dist_goal, k)
+		forward = _forward()
+	else:
+		_yaw_goal = _yaw
+		_pitch_goal = _pitch
+		_dist_goal = _dist
 	_look = _focus
 	_cam.position = -forward * SCENE_REF
 	_cam.look_at(Vector3.ZERO, Vector3.UP)
@@ -1205,6 +1230,40 @@ func _fmt_num(x: float) -> String:
 	return "%.4f" % x
 
 
+
+func _attach_min_dist() -> float:
+	if follow_id == "" or not eph.bodies.has(follow_id):
+		return 10.0
+	var R := _visual_radius(follow_id)
+	return maxf(R * 1.15 + 5.0, 20.0)
+
+
+func _attach_max_dist() -> float:
+	if follow_id == "" or not eph.bodies.has(follow_id):
+		return AU_KM * 500.0
+	var R := _visual_radius(follow_id)
+	var max_d := maxf(R * 80.0, standoff_km(follow_id) * 8.0)
+	# Far enough to see major moons of this body (or the body itself around its parent).
+	var parent_id := str(eph.bodies[follow_id].get("parent", ""))
+	for mid: String in eph.bodies.keys():
+		var b: Dictionary = eph.bodies[mid]
+		if str(b.get("kind", "")) != "moon":
+			continue
+		if str(b.get("parent", "")) != follow_id and mid != follow_id:
+			continue
+		if str(b.get("parent", "")) == follow_id:
+			var st := eph.state(mid, jd)
+			var pst := eph.state(follow_id, jd) if follow_id != "sun" else {"pos": Vector3.ZERO, "ok": true}
+			if st.get("ok", false) and pst.get("ok", false):
+				var rel: Vector3 = (st["pos"] as Vector3) - (pst["pos"] as Vector3)
+				max_d = maxf(max_d, rel.length() * 3.0 + R * 2.0)
+	return minf(max_d, AU_KM * 80.0)
+
+
+func _clamp_attach_dist(d: float) -> float:
+	return clampf(d, _attach_min_dist(), _attach_max_dist())
+
+
 func _gui_input(ev: InputEvent) -> void:
 	if ev is InputEventMouseButton:
 		var mb := ev as InputEventMouseButton
@@ -1213,21 +1272,56 @@ func _gui_input(ev: InputEvent) -> void:
 			if _rmb:
 				_hide_hover()
 			accept_event()
+		elif mb.button_index == MOUSE_BUTTON_LEFT:
+			_lmb = mb.pressed
+			if _lmb and follow_id != "":
+				_hide_hover()
+				accept_event()
+		elif mb.button_index == MOUSE_BUTTON_MIDDLE:
+			_mmb = mb.pressed
+			if _mmb:
+				_hide_hover()
+			accept_event()
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_dist = maxf(_dist / 1.2, 10.0)
+			var factor := 1.0 / 1.18
+			if follow_id != "":
+				_dist_goal = _clamp_attach_dist(_dist_goal * factor)
+			else:
+				_dist_goal = maxf(_dist_goal * factor, 10.0)
+				_dist = _dist_goal
 			_force_orbit_rebuild()
 			accept_event()
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_dist = minf(_dist * 1.2, AU_KM * 500.0)
+			var factor2 := 1.18
+			if follow_id != "":
+				_dist_goal = _clamp_attach_dist(_dist_goal * factor2)
+			else:
+				_dist_goal = minf(_dist_goal * factor2, AU_KM * 500.0)
+				_dist = _dist_goal
 			_force_orbit_rebuild()
 			accept_event()
 	elif ev is InputEventMouseMotion:
 		var mm := ev as InputEventMouseMotion
 		_last_mouse = mm.position
 		_mouse_in = true
-		if _rmb:
-			_yaw -= mm.relative.x * 0.005
-			_pitch = clampf(_pitch - mm.relative.y * 0.005, -1.2, 1.2)
+		var shift := Input.is_key_pressed(KEY_SHIFT)
+		var orbiting := (_rmb or (_lmb and follow_id != "")) and not shift and not _mmb
+		var panning := _mmb or (shift and (_rmb or _lmb))
+		if orbiting:
+			_yaw_goal -= mm.relative.x * 0.005
+			_pitch_goal = clampf(_pitch_goal - mm.relative.y * 0.005, -1.2, 1.2)
+			if follow_id == "":
+				_yaw = _yaw_goal
+				_pitch = _pitch_goal
+			_hide_hover()
+			accept_event()
+		elif panning and follow_id != "":
+			var right := Vector3(cos(_yaw), 0.0, -sin(_yaw))
+			var up := Vector3.UP
+			var pan_spd := maxf(_dist * 0.0015, 1.0)
+			_focus += (-right * mm.relative.x + up * mm.relative.y) * pan_spd
+			# pan offsets from the body; detach so focus sticks where user put it
+			follow_id = ""
 			_hide_hover()
 			accept_event()
 		else:
