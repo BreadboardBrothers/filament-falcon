@@ -6,9 +6,11 @@ True-scale solar-system visualizer on **Commander → SOLAR**. Offline by defaul
 - Sun + 8 planets + 5 dwarf planets (Pluto, Ceres, Eris, Haumea, Makemake) and **~460 moons** from JPL SSD mean elements (Earth→Pluto; irregulars included). Bundled catalog ships the full set; re-run the fetch script on the game PC to refresh.
 - Planet positions from JPL approximate Keplerian elements with century rates (`ssd.jpl.nasa.gov/planets/approx_pos.html`). Moons from [Planetary Satellite Mean Elements](https://ssd.jpl.nasa.gov/sats/elem/) (+ radii/GM from [phys_par](https://ssd.jpl.nasa.gov/sats/phys_par/) when published).
 - **True scale** by default (planet discs are tiny at AU ranges). Toggle **EXAG. SIZE** (clearly labeled) to inflate radii for overview.
-- Floating origin + log-scaled clip planes so you can fly from the Sun to a moon without precision loss.
+- **Floating origin + scene-unit scaling + distant impostors**: camera sits at a fixed scene distance while km positions are scaled; bodies beyond the local horizon are pulled in along the line of sight with angular size preserved so they never pop from depth precision. Near/far clip planes are derived from camera distance (and nearest surface) with a capped far/near ratio.
+- **Hover fact card** (ray pick with a generous radius for tiny bodies): name, type, sidereal/solar day, year, diameter & size vs Earth, mass/gravity/density, distance from Sun (AU, km, light-time), axial tilt, mean temperature, moon count, atmosphere, escape velocity, discovery, trivia, current orbital speed. Hides while the pointer is moving.
+- **Warp / attach**: frames the body so its diameter fills ~half the vertical FOV, approached from the **Sun-facing (lit) hemisphere** — not centered inside the body. Attach keeps that framing as the body moves.
 - Time: scrubber ±50 years, **NOW**, UTC clock, rates from pause / real-time through 100 yr/s and reverse.
-- Orbit lines (global / planets / moons), warp-to buttons, attach (inertial or rotating), WASD+QE move, RMB look, wheel zoom, AUTO/SLOW/MED/FAST/AU/s camera speed.
+- Orbit lines (global / planets / moons), WASD+QE move, RMB look, wheel zoom, AUTO/SLOW/MED/FAST/AU/s camera speed.
 - Ship marker + predicted trajectory (Sun+planets on rails, RK4 n-body) with span 1 d / 7 d / 30 d / 1 y.
 
 ## Accuracy limits
@@ -19,6 +21,7 @@ True-scale solar-system visualizer on **Commander → SOLAR**. Offline by defaul
 | Moons (JPL SSD mean elements) | schematic vs Horizons | Mean precessing ellipses — not for precise ephemerides; good for the visualizer |
 | Tiny irregulars without phys_par radius | radius ≈ 1.5 km placeholder | Orbital elements still from JPL; refresh phys_par when published |
 | Ship path | sketch | Bodies on rails; no SRP / drag / burns |
+| Fact card numbers | consensus / fact-sheet | `facts.json` — not a live Horizons query |
 
 Valid UI range: roughly J2000 ± 50 years (scrubber). Elements remain usable further out but drift.
 
@@ -43,11 +46,12 @@ Source is the HTML tables at `ssd.jpl.nasa.gov/sats/elem/` (there is **no** JSON
 ```
 XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --solar-test
 ```
-Checks: catalog load, moon count ≥ 290 (bundled ~460 after JPL refresh), Earth ≈ 1 AU at J2000 and 2024-01-01, Moon distance, Jupiter distance, finite ship trajectory, SolarView smoke.
+Checks: catalog load, moon count ≥ 290 (bundled ~460 after JPL refresh), Earth ≈ 1 AU at J2000 and 2024-01-01, Moon distance, Jupiter distance, finite ship trajectory, SolarView smoke, **clip planes across zoom**, half-screen lit-side warp / attach framing, facts dataset + hover text.
 
 ## Files
 - `game/data/solar/catalog.json` — bodies + moons
+- `game/data/solar/facts.json` — hover fact cards (planets, dwarfs, Sun, major moons)
 - `game/scripts/solar/ephemeris.gd` — Kepler + propagate
-- `game/scripts/ui/solar_view.gd` — SubViewport scene
+- `game/scripts/ui/solar_view.gd` — SubViewport scene (clips, impostors, hover, warp)
 - `game/shaders/solar/body.gdshader`, `ring.gdshader`
 - `game/tools/fetch_solar_assets.sh`, `build_moon_catalog.py`
