@@ -372,10 +372,19 @@ func _build_ics(page: Control) -> void:
 	var gt := hbox(g, 8)
 	for t: Array in [["radio_fx", "RADIO FX"], ["static", "STATIC"], ["squelch_tail", "SQUELCH"], ["beeps", "CLICK+ROGER"], ["speakers", "ROOM SPEAKERS"]]:
 		gt.add_child(setting_toggle("ics", str(t[0]), str(t[1]), 15, 44))
+	var gq := hbox(g, 8)
+	gq.add_child(label("AUDIO QUALITY", 16, C_DIM, false))
+	for q: String in ["low", "normal", "high", "hifi"]:
+		var qb := button({"low": "LOW", "normal": "NORMAL", "high": "HIGH", "hifi": "HI-FI"}[q], func() -> void:
+			Settings.set_v("ics", "audio_quality", q), 15, 44)
+		qb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		gq.add_child(qb)
+		live["ics_q_" + q] = func() -> void: qb.modulate = C_GREEN if str(Settings.get_v("ics", "audio_quality")) == q else Color.WHITE
+	gq.add_child(label("HI-FI = wide band, light compression; LOW = classic radio", 14, C_DIM, false))
 	var gs := hbox(g, 24)
 	setting_stepper(gs, "ics", "mc_vol", "Callouts", 0.1, 0.0, 2.0, "%.1f", 90, 18)
 	setting_stepper(gs, "ics", "allcall_duck", "ALL-CALL duck", 0.05, 0.0, 1.0, "%.2f", 130, 18)
-	root.add_child(label("VOX: the mic opens above the white tick on the meter and stays open for the hang time; set PTT if a seat chatters. MIC IN / AUDIO OUT: 'Headset' follows the seat's headset; a device used by another station is not offered.", 16, C_DIM))
+	root.add_child(label("VOX: the mic opens above the white tick on the meter and stays open for the hang time; set PTT if a seat chatters. MIC IN / AUDIO OUT: 'Headset' follows the seat's headset; a device used by another station is not offered. AUDIO QUALITY changes the radio band, compression and static (applies live).", 16, C_DIM))
 
 
 ## One station = one framed card: header in the station colour, then every control for it.

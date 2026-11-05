@@ -19,8 +19,10 @@ The helper loads/unloads the null sinks and loopbacks itself and removes stale o
 crashed run. Every stream crosses a small adaptive ring that drops/repeats one sample per 5 ms
 block when needed, so the four different USB/sink clocks never drift apart.
 
-Latency budget (48 kHz, 5 ms blocks): capture ~10 ms + ring ~5-8 ms + playback ~15 ms + USB
-~2-5 ms ~= 30-40 ms mouth-to-ear. Measure with --latency-test SEAT (mic held to the earcup).
+Latency budget (48 kHz, 10 ms blocks): capture ~15-20 ms + ring ~30 ms + playback ~25-40 ms + USB
+~2-5 ms ~= 50-70 ms mouth-to-ear (was ~30-40 ms with 5 ms blocks that underran and garbled).
+Measure with --latency-test SEAT (mic held to the earcup). Commander → ICS → AUDIO QUALITY picks
+LOW / NORMAL / HIGH / HI-FI (band width, compression, static, soft-clip, VOX softness).
 
 Protocol: JSON datagrams. Game -> helper on 127.0.0.1:47810, helper -> game on :47811.
     {"cmd":"hello","pid":N}  {"cmd":"cfg","values":{...}}  {"cmd":"state","ptt":{seat:bool},
@@ -70,8 +72,10 @@ DEFAULTS = {
     "pilot_headset": "", "ops_headset": "", "commander_headset": "", "eva_headset": "",
     "radio_fx": True, "static": True, "squelch_tail": True, "beeps": True,
     "speakers": True, "mc_vol": 0.9, "allcall_duck": 0.25,
+    # audio_quality: low | normal | high | hifi  (band, compressor, static, soft-clip)
+    "audio_quality": "high",
 }
-SEAT_DEFAULTS = {"mode": "vox", "vox_db": -38.0, "attack_ms": 15.0, "hang_ms": 600.0,
+SEAT_DEFAULTS = {"mode": "vox", "vox_db": -38.0, "attack_ms": 25.0, "hang_ms": 600.0,
                  "game_vol": 0.7, "ics_vol": 1.0, "sidetone": 0.0, "mic_gain": 1.0}
 for _s in SEATS:
     for _k, _v in SEAT_DEFAULTS.items():
@@ -80,6 +84,26 @@ DEFAULTS["commander_mode"] = "ptt"      # dad keys the INTERCOM button; kids def
 # the spacewalker (Quest 3 mic through WiVRn): VOX, a touch more hang, a little sidetone so the
 # helmet does not feel "dead"
 DEFAULTS.update({"eva_vox_db": -36.0, "eva_hang_ms": 700.0, "eva_game_vol": 0.6, "eva_sidetone": 0.15})
+
+# Radio / mix quality presets (Commander → ICS → AUDIO QUALITY). HI-FI keeps a gentle high-shelf
+# radio colour without the harsh band-limit / heavy compression that made earlier builds sound
+# "telephone-bad". Suit radio (EVA) stays narrower regardless.
+QUALITY = {
+    "low":    {"lo": 400.0, "hi": 2800.0, "comp_mk": 12.0, "comp_ratio": 4.0, "drive": 2.2,
+               "static_db": -40.0, "suit_lo": 500.0, "suit_hi": 2200.0, "vox_fade_ms": 8.0},
+    "normal": {"lo": 300.0, "hi": 3400.0, "comp_mk": 9.0,  "comp_ratio": 3.0, "drive": 1.6,
+               "static_db": -44.0, "suit_lo": 400.0, "suit_hi": 2600.0, "vox_fade_ms": 12.0},
+    "high":   {"lo": 200.0, "hi": 5200.0, "comp_mk": 4.0,  "comp_ratio": 2.0, "drive": 1.15,
+               "static_db": -52.0, "suit_lo": 350.0, "suit_hi": 3000.0, "vox_fade_ms": 18.0},
+    "hifi":   {"lo": 80.0,  "hi": 12000.0, "comp_mk": 1.5, "comp_ratio": 1.5, "drive": 1.0,
+               "static_db": -60.0, "suit_lo": 300.0, "suit_hi": 3400.0, "vox_fade_ms": 22.0},
+}
+
+
+def quality_params(cfg):
+    q = str(cfg.get("audio_quality", "high") or "high").lower()
+    return QUALITY.get(q, QUALITY["high"])
+
 
 
 def log(*a):
@@ -179,7 +203,7 @@ class BandPass:
 class Compressor:
     """Light feed-forward compressor at block rate (gain interpolated across the block)."""
 
-    def __init__(self, threshold_db=-30.0, ratio=3.0, makeup_db=9.0, attack_ms=5.0, release_ms=120.0):
+    def __init__(self, threshold_db=-24.0, ratio=2.0, makeup_db=4.0, attack_ms=8.0, release_ms=180.0):
         self.t, self.r, self.mk = threshold_db, ratio, makeup_db
         bt = BLOCK / RATE * 1000.0
         self.ca = math.exp(-bt / attack_ms)
@@ -197,6 +221,36 @@ class Compressor:
         ramp = np.linspace(self.g, g, len(x), endpoint=False)
         self.g = g
         return x * ramp
+
+    def retune(self, ratio=None, makeup_db=None, threshold_db=None):
+        if ratio is not None:
+            self.r = float(ratio)
+        if makeup_db is not None:
+            self.mk = float(makeup_db)
+        if threshold_db is not None:
+            self.t = float(threshold_db)
+
+
+class SoftLimiter:
+    """Lookahead-free soft ceiling: gain-smooth into a tanh curve so peaks never hard-clip."""
+
+    def __init__(self, ceiling=0.95, release_ms=40.0):
+        self.ceiling = ceiling
+        self.g = 1.0
+        bt = BLOCK / RATE * 1000.0
+        self.cr = math.exp(-bt / release_ms)
+
+    def process(self, x):
+        peak = float(np.max(np.abs(x))) if len(x) else 0.0
+        need = self.ceiling / peak if peak > self.ceiling else 1.0
+        # attack instantly toward need, release slowly back to 1
+        g = need if need < self.g else self.cr * self.g + (1.0 - self.cr) * need
+        ramp = np.linspace(self.g, g, len(x), endpoint=False) if len(x) else x
+        self.g = g
+        y = x * ramp
+        # final safety: soft knee into ceiling
+        c = self.ceiling
+        return np.tanh(y / c) * c
 
 
 class VoxGate:
@@ -278,7 +332,7 @@ class Channel:
     def __init__(self, name, cfg, sounds, mc=False):
         self.name, self.cfg, self.snd, self.mc = name, cfg, sounds, mc
         self.suit = name == "eva"     # spacewalker: narrower "suit radio" band, more static, Quindar tones
-        self.radio = BandPass(400.0, 2600.0) if self.suit else BandPass()
+        self.radio = BandPass()       # retuned in _apply_quality()
         self.comp = Compressor()
         self.vox = VoxGate()
         self.keyed = False
@@ -290,10 +344,29 @@ class Channel:
         self.muted = False
         self.force = False           # ALL-CALL keys the commander channel
         self.talk_time = 0.0
+        self._q_key = ""
+        self._drive = 1.15
+        self._static_db = -52.0
+        self._vox_fade_ms = 18.0
+        self._apply_quality()
+
+    def _apply_quality(self):
+        qp = quality_params(self.cfg)
+        key = (str(self.cfg.get("audio_quality", "high")), self.suit)
+        if key == self._q_key:
+            return
+        self._q_key = key
+        lo = qp["suit_lo"] if self.suit else qp["lo"]
+        hi = qp["suit_hi"] if self.suit else qp["hi"]
+        self.radio = BandPass(lo, hi)
+        self.comp.retune(ratio=qp["comp_ratio"], makeup_db=qp["comp_mk"])
+        self._drive = float(qp["drive"])
+        self._static_db = float(qp["static_db"]) - (8.0 if self.suit else 0.0)
+        self._vox_fade_ms = float(qp["vox_fade_ms"])
 
     def _p(self, k, default=None):
         if self.mc:
-            return {"mode": "vox", "vox_db": -55.0, "attack_ms": 5.0, "hang_ms": 350.0, "mic_gain": 1.0}.get(k, default)
+            return {"mode": "vox", "vox_db": -55.0, "attack_ms": 8.0, "hang_ms": 350.0, "mic_gain": 1.0}.get(k, default)
         return self.cfg.get(f"{self.name}_{k}", default)
 
     def queue(self, snd):
@@ -306,21 +379,26 @@ class Channel:
             self.pending[:len(snd)] += snd
 
     def process(self, x):
+        self._apply_quality()
         x = np.asarray(x, dtype=np.float64) * float(self._p("mic_gain", 1.0))
         n = len(x)
         lv = db(rms(x))
         self.level_db = lv
         self.peak_db = max(lv, self.peak_db - 1.5)
         self.vox.threshold_db = float(self._p("vox_db", -38.0))
-        self.vox.attack_ms = float(self._p("attack_ms", 15.0))
+        self.vox.attack_ms = float(self._p("attack_ms", 25.0))
         self.vox.hang_ms = float(self._p("hang_ms", 600.0))
         vox_open = self.vox.update(lv)
         mode = str(self._p("mode", "vox"))
         keyed = (self.ptt or self.force or (mode == "vox" and vox_open)) and not self.muted
         radio = bool(self.cfg.get("radio_fx", True))
-        y = self.comp.process(self.radio.process(x)) if radio else x
         if radio:
-            y = np.tanh(y * 1.6) / 1.6
+            y = self.comp.process(self.radio.process(x))
+            d = float(self._drive)
+            if d > 1.001:
+                y = np.tanh(y * d) / d
+        else:
+            y = x
         if keyed != self.keyed:
             beeps = bool(self.cfg.get("beeps", True))
             if keyed and beeps:
@@ -331,9 +409,13 @@ class Channel:
                 if radio and bool(self.cfg.get("squelch_tail", True)):
                     self.queue(np.concatenate([np.zeros(int(RATE * (0.14 if beeps else 0.0))), self.snd.squelch()]))
             self.keyed = keyed
+        # Soft VOX fade (quality-dependent): exponential approach instead of a hard step over 1 block
         target = 1.0 if keyed else 0.0
-        env = np.linspace(self.gain, target, n, endpoint=False) if self.gain != target else np.full(n, target)
-        self.gain = target
+        fade = max(self._vox_fade_ms, 1.0)
+        a = math.exp(-(BLOCK / RATE * 1000.0) / fade)
+        end = a * self.gain + (1.0 - a) * target
+        env = np.linspace(self.gain, end, n, endpoint=False) if self.gain != end else np.full(n, target)
+        self.gain = end
         voice = y * env
         if keyed:
             self.talk_time += n / RATE
@@ -343,7 +425,7 @@ class Channel:
             tails[:m] = self.pending[:m]
             self.pending = self.pending[m:]
         if keyed and radio and bool(self.cfg.get("static", True)):
-            tails += self.snd.static(n, -36.0 if self.suit else -44.0)
+            tails += self.snd.static(n, self._static_db)
         return voice, tails
 
 
@@ -362,6 +444,7 @@ class Engine:
         self._allcall_prev = False
         self.extra = {s: np.zeros(0) for s in SEATS}     # one-off sounds per listener (ident, chime)
         self.duck = {s: 1.0 for s in SEATS}
+        self.limiter = SoftLimiter(ceiling=0.95)
 
     def set_cfg(self, values):
         self.cfg.update(values)
@@ -418,10 +501,7 @@ class Engine:
                 m = min(n, len(e))
                 y[:m] += e[:m]
                 self.extra[s] = e[m:]
-            peak = float(np.max(np.abs(y))) if len(y) else 0.0
-            if peak > 0.85:                       # soft limiter
-                y = np.tanh(y / 0.85) * 0.85
-            res[s] = y
+            res[s] = self.limiter.process(y)
         return res
 
     def status(self):
@@ -432,10 +512,32 @@ class Engine:
 
 
 # ============================================================================ rings (clock drift)
+def _resample_cubic(x, n):
+    """Resample 1-D float array to length n with Catmull-Rom (cubic) interpolation."""
+    m = len(x)
+    if m == n:
+        return x
+    if m < 2:
+        return np.resize(x, n)
+    t = np.linspace(0.0, m - 1.0, n)
+    i = np.floor(t).astype(np.int64)
+    f = t - i
+    i0 = np.clip(i - 1, 0, m - 1)
+    i1 = np.clip(i, 0, m - 1)
+    i2 = np.clip(i + 1, 0, m - 1)
+    i3 = np.clip(i + 2, 0, m - 1)
+    p0, p1, p2, p3 = x[i0], x[i1], x[i2], x[i3]
+    a = -0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3
+    b = p0 - 2.5 * p1 + 2.0 * p2 - 0.5 * p3
+    c = -0.5 * p0 + 0.5 * p2
+    return ((a * f + b) * f + c) * f + p1
+
+
 class Ring:
     """Single-producer/single-consumer sample FIFO with gentle drift control: when the fill
     drifts more than a quarter block from the target, read() resamples n+1 or n-1 samples into n
-    (one sample per 10 ms block = up to 2000 ppm, inaudible). Target ~30 ms of cushion.."""
+    with cubic (Catmull-Rom) interpolation (one sample per 10 ms block ≈ 2000 ppm, inaudible).
+    Target ~30 ms of cushion."""
 
     def __init__(self, target=BLOCK * 3, cap=RATE):
         self.buf = np.zeros(cap)
@@ -495,7 +597,7 @@ class Ring:
             seg = self._take(m)
         if m != n:
             self.adjust += 1
-            seg = np.interp(np.linspace(0, m - 1, n), np.arange(m), seg)
+            seg = _resample_cubic(seg, n)
         return seg
 
 
@@ -839,7 +941,7 @@ class Pulse:
 class Capture(threading.Thread):
     """parec -> Ring. Restarts the recorder if the device disappears (replug)."""
 
-    def __init__(self, device, ring, name, latency_ms=20):
+    def __init__(self, device, ring, name, latency_ms=25):
         super().__init__(daemon=True, name="cap-" + name)
         self.device, self.ring, self.latency_ms = device, ring, latency_ms
         self.proc = None
@@ -847,19 +949,33 @@ class Capture(threading.Thread):
 
     def run(self):
         while not self.stop:
-            cmd = ["parec", "--raw", "--format=s16le", f"--rate={RATE}", "--channels=1",
+            # Prefer float32 capture (no quantize noise into the mixer); fall back to s16le.
+            fmt, dtype, bps = "float32le", "<f4", 4
+            cmd = ["parec", "--raw", f"--format={fmt}", f"--rate={RATE}", "--channels=1",
                    f"--latency-msec={self.latency_ms}", f"--device={self.device}", "--client-name=falcon-ics",
                    "--stream-name=" + self.name]
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             except OSError:
                 return
-            nbytes = BLOCK * 2
+            # If the server rejected float32, restart as s16le once
+            time.sleep(0.05)
+            if self.proc.poll() is not None:
+                fmt, dtype, bps = "s16le", "<i2", 2
+                cmd[cmd.index("--format=float32le")] = f"--format={fmt}"
+                try:
+                    self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                except OSError:
+                    return
+            nbytes = BLOCK * bps
             while not self.stop:
                 b = self.proc.stdout.read(nbytes)
                 if not b or len(b) < nbytes:
                     break
-                self.ring.write(np.frombuffer(b, dtype="<i2").astype(np.float64) / 32768.0)
+                x = np.frombuffer(b, dtype=dtype).astype(np.float64)
+                if dtype == "<i2":
+                    x = x / 32768.0
+                self.ring.write(x)
             self.kill()
             if not self.stop:
                 time.sleep(1.0)
@@ -876,7 +992,7 @@ class Capture(threading.Thread):
 class Playback(threading.Thread):
     """Ring -> pacat. The sink's clock paces the blocking write; the ring absorbs drift."""
 
-    def __init__(self, device, ring, name, latency_ms=30, channels=1):
+    def __init__(self, device, ring, name, latency_ms=40, channels=1):
         super().__init__(daemon=True, name="play-" + name)
         self.device, self.ring, self.latency_ms = device, ring, latency_ms
         self.channels = channels
@@ -1168,7 +1284,7 @@ class Helper:
                 if "yes" in out:
                     run(["pactl", "set-source-mute", dev["source"], "0"])
                     log(f"{seat}: source was MUTED in the system mixer; unmuted it")
-            log(f"{seat}: INPUT {dev['source']}  native [{spec}] -> captured as s16le 48000 Hz mono (server converts)")
+            log(f"{seat}: INPUT {dev['source']}  native [{spec}] -> captured as float32/s16le 48000 Hz mono (server converts)")
             self.in_rings[seat] = Ring()
             self.caps[seat] = Capture(dev["source"], self.in_rings[seat], seat)
             self.caps[seat].start()
@@ -1183,7 +1299,7 @@ class Helper:
                 vol = re.findall(r"(\d+)%", run(["pactl", "get-sink-volume", dev["sink"]])[1])
                 if vol and max(int(v) for v in vol) < 5:
                     log(f"{seat}: WARNING sink volume is {max(int(v) for v in vol)}% in the system mixer")
-            log(f"{seat}: OUTPUT {dev['sink']}  native [{o.get('spec', '?')}] state {o.get('state', '?')} -> s16le 48000 Hz {ch}ch")
+            log(f"{seat}: OUTPUT {dev['sink']}  native [{o.get('spec', '?')}] state {o.get('state', '?')} -> s16le 48000 Hz {ch}ch  quality={self.cfg.get('audio_quality', 'high')}")
             self.out_rings[seat] = Ring()
             self.plays[seat] = Playback(dev["sink"], self.out_rings[seat], seat, channels=ch)
             self.plays[seat].start()

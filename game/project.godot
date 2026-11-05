@@ -38,6 +38,12 @@ window/vsync/vsync_mode=1
 
 pointing/emulate_mouse_from_touch=true
 
+[audio]
+
+driver/mix_rate=48000
+driver/output_latency=15
+driver/output_latency.web=50
+
 [physics]
 
 common/physics_ticks_per_second=120

@@ -7,7 +7,9 @@
 4. Look for leftover sinks from a crash: `pactl list short modules | grep -i falcon`. To clear them: `pactl list short modules | awk '/falcon/{print $1}' | xargs -r -n1 pactl unload-module`
 5. Measure the delay through a headset: `python3 tools/falcon_ics.py --latency-test pilot`
 
-The intercom runs at a fixed 48 kHz with 10 ms blocks and about 30 ms of buffer (around 50-60 ms end to end). PulseAudio/PipeWire resample any headset that runs at 44.1 kHz. When the helper stops, the game moves its audio back to the default output.
+The intercom runs at a fixed 48 kHz with 10 ms blocks and about 30 ms of buffer (around 50-70 ms end to end). Capture prefers float32 (falls back to s16le); playback is s16le at the sink's channel count. Drift between USB clocks is corrected with cubic resampling (inaudible). PulseAudio/PipeWire resample any headset that runs at 44.1 kHz. When the helper stops, the game moves its audio back to the default output.
+
+**Audio quality (Commander → ICS → AUDIO QUALITY):** LOW / NORMAL / HIGH / HI-FI. This changes the radio band, compressor makeup, soft-clip drive and static level. Default is **HIGH** (wider band ~200–5200 Hz, light compression). HI-FI is nearly clean (80–12 kHz, almost no drive). The old "telephone" sound was NORMAL/LOW with a hard tanh drive of 1.6 and +9 dB makeup. Godot's mix rate is 48 kHz (UI beeps used to be synthesised at 24 kHz).
 
 ## Mic silent / stations swapping devices
 

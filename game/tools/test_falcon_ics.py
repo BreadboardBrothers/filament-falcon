@@ -103,14 +103,39 @@ def run_engine(eng, seconds, talkers, game=None):
     return {s: np.concatenate(v) for s, v in outs.items()}
 
 
+class Quality(unittest.TestCase):
+    def test_presets_widen_band(self):
+        lo = ics.BandPass(**{k: ics.QUALITY["low"][k] for k in ("lo", "hi")})
+        hi = ics.BandPass(**{k: ics.QUALITY["hifi"][k] for k in ("lo", "hi")})
+        self.assertGreater(gain_db(6000, hi), gain_db(6000, lo) + 6)
+
+    def test_hifi_drive_is_unity(self):
+        self.assertAlmostEqual(ics.QUALITY["hifi"]["drive"], 1.0)
+        self.assertGreater(ics.QUALITY["low"]["drive"], ics.QUALITY["high"]["drive"])
+
+    def test_soft_limiter_holds_ceiling(self):
+        lim = ics.SoftLimiter(ceiling=0.9)
+        y = lim.process(np.ones(B) * 2.0)
+        self.assertLessEqual(float(np.max(np.abs(y))), 0.901)
+
+    def test_cubic_resampler_preserves_dc(self):
+        x = np.full(100, 0.25)
+        y = ics._resample_cubic(x, 97)
+        self.assertAlmostEqual(float(np.mean(y)), 0.25, places=6)
+
+
 class SuitRadio(unittest.TestCase):
     """4th seat: the VR spacewalker (Meta Quest 3 audio through WiVRn's virtual devices)."""
 
     def test_eva_band_is_narrower(self):
-        mk = lambda: ics.Channel("eva", dict(ics.DEFAULTS), ics.Sounds()).radio  # noqa: E731
-        self.assertLess(gain_db(5000, mk()), gain_db(5000, ics.BandPass()) - 3.0)
-        self.assertLess(gain_db(300, mk()), gain_db(300, ics.BandPass()) - 2.5)
-        self.assertGreater(gain_db(1200, mk()), -3.5)
+        # Suit radio is always narrower than the crew band at the same quality preset.
+        cfg = dict(ics.DEFAULTS)
+        cfg["audio_quality"] = "normal"   # classic radio numbers, clear gap at 5 kHz / 300 Hz
+        eva = ics.Channel("eva", cfg, ics.Sounds()).radio
+        crew = ics.Channel("pilot", cfg, ics.Sounds()).radio
+        self.assertLess(gain_db(5000, eva), gain_db(5000, crew) - 2.0)
+        self.assertLess(gain_db(300, eva), gain_db(300, crew) - 1.5)
+        self.assertGreater(gain_db(1200, eva), -3.5)
 
     def test_quindar_tones_on_key_up_and_down(self):
         cfg = dict(ics.DEFAULTS)

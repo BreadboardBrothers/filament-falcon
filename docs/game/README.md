@@ -170,7 +170,8 @@ All views render at native 1920x1080 (the console also works in portrait, 1080x1
 - **ICS**: the intercom: headset per seat (◀ ▶, IDENTIFY through that station's AUDIO OUT, RESCAN), mic level
   meters, OUT meter + stream state per station, VOX/PTT, VOX level / attack /
   hang, mic gain, intercom and game volume, sidetone per seat; radio effect, static, squelch tail, click + roger,
-  room speakers, callout volume, ALL-CALL duck.
+  room speakers, callout volume, ALL-CALL duck, and **AUDIO QUALITY** (LOW / NORMAL / HIGH / HI-FI) for the
+  radio band and compression (see [AUDIO_TROUBLESHOOTING.md](AUDIO_TROUBLESHOOTING.md)).
 - **SETUP**: screen roles, layout mode, quality, FPS cap, vsync, fullscreen, LED link, window geometry, QUIT;
   headset per seat; ALWAYS SHOW virtual panels; crew-position options (callouts, travel time, UP sense fitted).
 

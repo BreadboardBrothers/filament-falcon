@@ -68,16 +68,17 @@ const DEFAULTS := {
 		# or "node@bus=<usb path>" (older saves: "node@port=<short port>" or a bare node name)
 		"pilot_in": "", "pilot_out": "", "ops_in": "", "ops_out": "", "commander_in": "", "commander_out": "", "eva_in": "", "eva_out": "",
 		"radio_fx": true, "static": true, "squelch_tail": true, "beeps": true, "speakers": true,
+		"audio_quality": "high",   # low | normal | high | hifi  (ICS radio band / compression / static)
 		"mc_vol": 0.9, "allcall_duck": 0.25,
-		"pilot_mode": "vox", "pilot_vox_db": -38.0, "pilot_attack_ms": 15.0, "pilot_hang_ms": 600.0,
+		"pilot_mode": "vox", "pilot_vox_db": -38.0, "pilot_attack_ms": 25.0, "pilot_hang_ms": 600.0,
 		"pilot_game_vol": 0.7, "pilot_ics_vol": 1.0, "pilot_sidetone": 0.0, "pilot_mic_gain": 1.0,
-		"ops_mode": "vox", "ops_vox_db": -38.0, "ops_attack_ms": 15.0, "ops_hang_ms": 600.0,
+		"ops_mode": "vox", "ops_vox_db": -38.0, "ops_attack_ms": 25.0, "ops_hang_ms": 600.0,
 		"ops_game_vol": 0.7, "ops_ics_vol": 1.0, "ops_sidetone": 0.0, "ops_mic_gain": 1.0,
-		"commander_mode": "ptt", "commander_vox_db": -38.0, "commander_attack_ms": 15.0, "commander_hang_ms": 600.0,
+		"commander_mode": "ptt", "commander_vox_db": -38.0, "commander_attack_ms": 25.0, "commander_hang_ms": 600.0,
 		"commander_game_vol": 0.7, "commander_ics_vol": 1.0, "commander_sidetone": 0.0, "commander_mic_gain": 1.0,
 		# 4th seat: the VR spacewalker (Quest 3 audio through WiVRn's virtual sink / mic source)
 		"eva_headset": "",
-		"eva_mode": "vox", "eva_vox_db": -36.0, "eva_attack_ms": 15.0, "eva_hang_ms": 700.0,
+		"eva_mode": "vox", "eva_vox_db": -36.0, "eva_attack_ms": 25.0, "eva_hang_ms": 700.0,
 		"eva_game_vol": 0.6, "eva_ics_vol": 1.0, "eva_sidetone": 0.15, "eva_mic_gain": 1.0,
 	},
 	# Spacewalks (docs/game/VR_SETUP.md). mode: auto (VR when the headset client is connected,

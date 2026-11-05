@@ -3,7 +3,7 @@ extends Node
 ## and puffs, re-entry wind/plasma roar, master-caution alarm, cabin fan ambience, and
 ## UI beeps / chimes / fanfare. Everything is synthesised into one AudioStreamGenerator.
 
-const RATE := 24000.0
+const RATE := 48000.0
 
 var player: AudioStreamPlayer
 var pb: AudioStreamGeneratorPlayback
