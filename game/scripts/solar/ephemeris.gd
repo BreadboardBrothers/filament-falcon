@@ -42,7 +42,42 @@ func load_catalog(path: String = "res://data/solar/catalog.json") -> bool:
 			if not children.has(p):
 				children[p] = []
 			children[p].append(str(m["id"]))
+	_merge_overlay()
 	return not bodies.is_empty()
+
+
+## Prefer ~/.local/share/.../assets/solar/moons_full.json when present (from build_moon_catalog.py).
+func _merge_overlay() -> void:
+	var path := Geo.asset_dir() + "/solar/moons_full.json"
+	if not FileAccess.file_exists(path):
+		return
+	var txt := FileAccess.get_file_as_string(path)
+	var js: Variant = JSON.parse_string(txt)
+	if not (js is Dictionary):
+		return
+	var arr: Variant = (js as Dictionary).get("moons", [])
+	if not (arr is Array) or (arr as Array).is_empty():
+		return
+	# Drop previous moons from bodies/children, keep planets/dwarfs/sun.
+	for m: Dictionary in moons:
+		var id := str(m.get("id", ""))
+		bodies.erase(id)
+	for pid: Variant in children.keys():
+		var kept: Array = []
+		for cid: Variant in children[pid]:
+			if bodies.has(str(cid)) and str(bodies[str(cid)].get("kind", "")) != "moon":
+				kept.append(cid)
+		children[pid] = kept
+	moons.clear()
+	for m: Variant in arr:
+		if not (m is Dictionary):
+			continue
+		moons.append(m)
+		bodies[str(m["id"])] = m
+		var p2 := str(m.get("parent", ""))
+		if not children.has(p2):
+			children[p2] = []
+		children[p2].append(str(m["id"]))
 
 
 static func unix_to_jd(unix: float) -> float:

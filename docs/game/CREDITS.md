@@ -13,4 +13,4 @@ Total size of third-party assets in the repo: **0 bytes**.
 ## Solar textures & ephemerides
 - Planetary maps: [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0); NASA / USGS / JPL public-domain maps may replace them in `assets/solar/`.
 - Planet elements: [JPL Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html).
-- Moon elements: JPL SSD satellite mean elements (`ssd.jpl.nasa.gov`), with schematic placeholders for tiny irregulars until refreshed by `tools/build_moon_catalog.py`.
+- Moon elements: [JPL SSD Planetary Satellite Mean Elements](https://ssd.jpl.nasa.gov/sats/elem/) + [physical parameters](https://ssd.jpl.nasa.gov/sats/phys_par/), refreshed by `tools/build_moon_catalog.py` (HTML tables; no JSON satelm API).

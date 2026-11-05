@@ -29,7 +29,7 @@ func _frames(n: int) -> void:
 func _run() -> void:
 	var eph := SolarEphemeris.new()
 	_check(eph.load_catalog(), "catalog loads")
-	_check(eph.moon_count() >= 290, "moon count %d ≥ 290" % eph.moon_count())
+	_check(eph.moon_count() >= 290, "moon count %d ≥ 290 (bundled or JPL overlay)" % eph.moon_count())
 	_check(eph.bodies.has("earth") and eph.bodies.has("jupiter") and eph.bodies.has("sun"), "planets present")
 	var j2000 := 2451545.0
 	var e0 := eph.planet_state("earth", j2000)

@@ -62,9 +62,9 @@ for item in "${ITEMS[@]}"; do
   fi
 done
 
-# Optional: refresh full moon catalog from JPL when network allows
+# Optional: refresh full moon catalog from JPL SSD HTML tables (ssd.jpl.nasa.gov/sats/elem/)
 if command -v python3 >/dev/null; then
-  python3 "$HERE/build_moon_catalog.py" --out "$DATA/assets/solar/moons_full.json" || log "moon catalog refresh skipped"
+  python3 "$HERE/build_moon_catalog.py" --out "$DATA/assets/solar/moons_full.json"     || log "moon catalog refresh skipped (bundled catalog kept)"
 fi
 
 log "done: $ok ok, $miss missing → $OUT"
