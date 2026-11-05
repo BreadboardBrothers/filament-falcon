@@ -2,7 +2,7 @@
 <div class="kicker">THE FILAMENT FALCON</div>
 <h1 class="title">Updates &amp; Quick Start</h1>
 <p class="sub">What changed since mid-October 2026, and how to get from a fresh PC to a crew in orbit.</p>
-<p class="meta">Game v0.1 · Godot 4.7.2 · Linux Mint 22 · October 27, 2026</p>
+<p class="meta">Game v0.1 · Godot 4.7.2 · Linux Mint 22 · November 5, 2026</p>
 </div>
 
 # Part 1 · What's new since mid-October
@@ -19,6 +19,8 @@
 <tr><td>Oct 27</td><td>AREAS job runner really starts (the "QUEUED 0 %" fix)</td><td>785e754</td></tr>
 <tr><td>Oct 27</td><td>Nav map: lit Earth/Moon globes and a GROUND close-up</td><td>9f8a222</td></tr>
 <tr><td>Oct 27</td><td>AREAS map: roads, rivers, lakes and place names</td><td>44fc758</td></tr>
+<tr><td>Nov 5</td><td>ICS audio quality: 48 kHz, float capture, cubic resample, SoftLimiter, LOW/NORMAL/HIGH/HI-FI</td><td>cdde1f6</td></tr>
+<tr><td>Nov 5</td><td>Commander SOLAR page: true-scale system, moons, time scrub, ship path</td><td>(this release)</td></tr>
 </table>
 
 ## Real-size Earth and Moon
@@ -91,6 +93,16 @@
 - The data comes from `tools/map_layer.py`, which turns the cached Geofabrik extracts into small `maps/*.ffml` files. The map loads them in the background and draws only what is in view.
 - Without a layer the map works as before and offers **BUILD MAP LAYER**. The AREAS runner also refreshes the layer after every OSM download.
 
+
+## ICS audio quality
+- The intercom helper now runs at **48 kHz**, 10 ms blocks, float32 capture (s16le fallback), cubic drift resampling, a soft limiter, and gentler VOX / radio defaults.
+- **Commander → ICS → AUDIO QUALITY**: LOW / NORMAL / HIGH / HI-FI. Default **HIGH**. Godot mix rate is 48 kHz. Details: `docs/game/AUDIO_TROUBLESHOOTING.md`.
+
+## Commander SOLAR page
+- **Commander → SOLAR** shows the solar system at **true scale** (optional labeled **EXAG. SIZE**), with real Keplerian orbits, a UTC scrubber, orbit toggles, warp / attach, time rates from pause to 100 yr/s, WASD+mouse camera, and a predicted ship path.
+- Bundled catalog: Sun, planets, dwarfs, **293 moons**. Offline by default. Textures: `game/tools/fetch_solar_assets.sh` (also via `fetch_assets.sh`) on the game PC. See `docs/game/SOLAR.md`.
+- Headless: `godot --headless --path game -- --solar-test`.
+
 # Part 2 · Quick start
 
 <div class="note">All commands run from the repo folder (e.g. <code>~/filament-falcon</code>). Downloads and generated data go to <code>~/.local/share/filament-falcon/</code>, never into the repo.</div>
@@ -110,7 +122,7 @@ cd filament-falcon
 game/tools/fetch_assets.sh              # NASA Earth/Moon (HD) + the Fredericton region
 game/tools/fetch_assets.sh --no-hd      # ~80 MB less
 ```
-It also builds the nav-map overlays and the AREAS map layer. Without assets the game uses its procedural planet.
+It also builds the nav-map overlays, the AREAS map layer, and (when online) the SOLAR planet textures. Without assets the game uses its procedural planet / colored spheres.
 
 ## 3 · Building regions (3D cities)
 The easiest way is the **AREAS** page (section 6). From a terminal:
@@ -143,6 +155,7 @@ cd game
 <tr><td>ICS</td><td>The intercom: the headset for each seat, IDENTIFY, meters, VOX/PTT, volumes and the radio effect.</td></tr>
 <tr><td>EVA</td><td>Spacewalks: LAUNCH VR CLIENT, START EVA, REEL IN, BURN GO / NO-GO, and comfort options.</td></tr>
 <tr><td>AREAS</td><td>Download and generate real places (next section).</td></tr>
+<tr><td>SOLAR</td><td>True-scale solar system, moons, time scrub, warp, ship path. See § SOLAR above / <code>docs/game/SOLAR.md</code>.</td></tr>
 <tr><td>SETUP</td><td>Screen roles, quality, FPS, vsync, LED link, headsets, virtual panels and QUIT.</td></tr>
 </table>
 
@@ -188,7 +201,8 @@ Safety: a clear 2 × 2 m area outside the cockpit, Guardian on, and a grown-up w
 1. Plug in the three USB headsets and open Commander → **ICS**.
 2. For each seat, press ◀ ▶ until the right headset shows, then **IDENTIFY**: a tone plays in that headset only. Choices are saved by name, serial and USB port.
 3. Set the VOX level so the meter crosses the white tick when talking, or switch that seat to PTT. Push-to-talk keys: `\` Pilot, `/` Ops, `` ` `` Commander, `'` ALL-CALL.
-4. When the Quest is connected, it becomes the 4th seat, **SPACEWALKER**, with a suit-radio sound and Quindar beeps.
+4. Set **AUDIO QUALITY** (LOW / NORMAL / HIGH / HI-FI; default HIGH) if the radio effect is too harsh or too clean.
+5. When the Quest is connected, it becomes the 4th seat, **SPACEWALKER**, with a suit-radio sound and Quindar beeps.
 
 ## 9 · Touchscreen
 - `run.sh` maps the touch panel to the console output and isolates it from the mouse on every start.
@@ -209,6 +223,8 @@ Safety: a clear 2 × 2 m area outside the cockpit, Guardian on, and a grown-up w
 <tr><td>Taps land on the wrong monitor</td><td><code>game/tools/setup_displays.sh</code></td></tr>
 <tr><td>Mouse cursor gone / jumps to the console</td><td>Start through <code>run.sh</code>; don't run <code>unclutter</code>; <code>touch_isolate.sh stop</code> restores it</td></tr>
 <tr><td>Intercom off or silent</td><td>Read the reason on the ICS page; <code>sudo apt install python3-numpy pulseaudio-utils</code>; <code>python3 game/tools/falcon_ics.py --list</code></td></tr>
+<tr><td>Intercom sounds muffled / telephone-like</td><td>Commander → ICS → AUDIO QUALITY → HIGH or HI-FI; see <code>AUDIO_TROUBLESHOOTING.md</code></td></tr>
+<tr><td>SOLAR spheres, no planet maps</td><td><code>game/tools/fetch_solar_assets.sh</code> on the game PC</td></tr>
 <tr><td>Echo in the headsets</td><td>Turn sidetone and ROOM SPEAKERS off, or use PTT</td></tr>
 <tr><td>"No OpenXR runtime" / VR opens a flat window</td><td>Start the WiVRn server and connect by USB, then LAUNCH VR CLIENT again</td></tr>
 <tr><td><code>adb devices</code> says unauthorized</td><td>Accept USB debugging in the headset; <code>adb kill-server; adb devices</code></td></tr>

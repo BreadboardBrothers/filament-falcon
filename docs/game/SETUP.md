@@ -43,7 +43,7 @@ different `godot` link or udev rule, the script reports it and leaves it alone.
 | Godot 4.7.2 stable (official GitHub release, **SHA-512 checked**; not installed if the check fails) | `~/Apps/godot/`, linked as `~/.local/bin/godot` | The game (`run.sh` uses `godot` on PATH, or `GODOT=`) |
 | WiVRn (`flatpak --user`, from Flathub) | home | Quest 3 streaming / OpenXR runtime |
 | The VR launcher entry (`install_vr_launcher.sh`) | `~/.local/share/applications` | Start the spacewalk from inside the headset |
-| Game assets (`game/tools/fetch_assets.sh`, ~150 MB) | `~/.local/share/filament-falcon/assets` | NASA Earth/Moon textures, OSM Fredericton |
+| Game assets (`game/tools/fetch_assets.sh`, ~150 MB + SOLAR maps) | `~/.local/share/filament-falcon/assets` | NASA Earth/Moon textures, OSM Fredericton, SOLAR planet maps |
 
 It also runs a one-time headless Godot import of the project (the same step `run.sh` does on first launch).
 
