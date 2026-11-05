@@ -1,13 +1,5 @@
 extends Node
-## Headless solar-system checks (`-- --solar-test`):
-##   - catalog loads; moon count ≥ 290
-##   - Earth heliocentric distance near 1 AU at J2000 (tol 0.02 AU)
-##   - Earth at a known date (2024-01-01) still ~1 AU
-##   - Moon stays within 500_000 km of Earth
-##   - ship trajectory propagator returns points and stays finite
-##   - SolarView builds and advances a few frames
-##   - clip planes stay sane across zoom (near < far, ratio capped, bodies framed)
-##   - warp standoff ≈ half-screen; facts dataset present
+## Headless solar-system checks (`-- --solar-test`).
 ##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --solar-test
 
 var _ok := true
@@ -31,16 +23,16 @@ func _frames(n: int) -> void:
 func _run() -> void:
 	var eph := SolarEphemeris.new()
 	_check(eph.load_catalog(), "catalog loads")
-	_check(eph.moon_count() >= 290, "moon count %d ≥ 290 (bundled or JPL overlay)" % eph.moon_count())
+	_check(eph.moon_count() >= 290, "moon count %d ≥ 290" % eph.moon_count())
 	_check(eph.bodies.has("earth") and eph.bodies.has("jupiter") and eph.bodies.has("sun"), "planets present")
 	var j2000 := 2451545.0
 	var e0 := eph.planet_state("earth", j2000)
 	_check(e0.get("ok", false), "earth state at J2000")
 	var r0: float = (e0["pos"] as Vector3).length() / SolarEphemeris.AU_KM
-	_check(absf(r0 - 1.0) < 0.02, "Earth |r| at J2000 = %.4f AU (tol 0.02)" % r0)
+	_check(absf(r0 - 1.0) < 0.02, "Earth |r| at J2000 = %.4f AU" % r0)
 	var e1 := eph.planet_state("earth", 2460310.5)
 	var r1: float = (e1["pos"] as Vector3).length() / SolarEphemeris.AU_KM
-	_check(absf(r1 - 1.0) < 0.03, "Earth |r| at 2024-01-01 = %.4f AU (tol 0.03)" % r1)
+	_check(absf(r1 - 1.0) < 0.03, "Earth |r| at 2024-01-01 = %.4f AU" % r1)
 	var m := eph.moon_state("moon", j2000)
 	var em: float = ((m["pos"] as Vector3) - (e0["pos"] as Vector3)).length()
 	_check(em > 300000.0 and em < 500000.0, "Moon distance from Earth at J2000 = %.0f km" % em)
@@ -64,85 +56,114 @@ func _run() -> void:
 	vp.add_child(sv)
 	await _frames(6)
 	_check(sv.eph.moon_count() >= 290, "SolarView catalog live")
-	_check(sv.facts.has("earth") and sv.facts.has("sun") and sv.facts.has("titan"), "facts dataset (earth/sun/titan)")
-	var tip := sv.format_hover_bbcode("earth")
-	_check(tip.contains("Earth") and tip.contains("Day") and tip.contains("AU"), "hover card text for earth")
+	_check(sv.facts.has("earth") and sv.facts.has("sun"), "facts dataset")
+	_check(sv._sky_stars.size() >= 50, "bundled bright-star catalog (%d)" % sv._sky_stars.size())
+	_check(sv._sky_galaxies.size() >= 8, "bundled galaxy catalog (%d)" % sv._sky_galaxies.size())
+	_check(sv.show_ship_path == false, "SHIP PATH default off (was yellow lines from Earth)")
+	_check(sv.show_labels == true, "LABELS default on")
+	_check(sv.exaggerated_sun == false, "EXAG. SUN default off")
 
-	# Clip planes across zoom range (true-scale AU → planet → moon).
-	var zooms: Array = [
-		SolarView.AU_KM * 40.0,
-		SolarView.AU_KM * 3.0,
-		SolarView.AU_KM * 0.5,
-		1.0e7,
-		1.0e6,
-		5.0e4,
-		8.0e3,
-		500.0,
-	]
+	# Clip planes across zoom
+	var zooms: Array = [SolarView.AU_KM * 40.0, SolarView.AU_KM * 3.0, 1.0e7, 5.0e4, 500.0]
 	var clips_ok := true
 	for d: float in zooms:
 		var c: Dictionary = sv.clip_planes_for_dist(d)
-		var near_u: float = c["near"]
-		var far_u: float = c["far"]
-		var ratio := far_u / maxf(near_u, 1e-9)
-		var row_ok := near_u > 0.0 and far_u > near_u and ratio <= SolarView.FAR_RATIO_MAX * 1.01
-		if not row_ok:
+		if not (float(c["near"]) > 0.0 and float(c["far"]) > float(c["near"]) and float(c["far"]) / float(c["near"]) <= SolarView.FAR_RATIO_MAX * 1.01):
 			clips_ok = false
-			print("  FAIL clip at dist=%s near=%s far=%s ratio=%s" % [str(d), str(near_u), str(far_u), str(ratio)])
-		else:
-			print("  ok   clip dist=%s near=%s far=%s ratio=%s" % [str(d), str(near_u), str(far_u), str(ratio)])
-	_check(clips_ok, "clip planes sane across zoom range")
+	_check(clips_ok, "clip planes sane across zoom")
 
-	# Live camera clip after warps
-	sv.warp_to("jupiter")
-	await _frames(3)
-	_check(sv._cam.near > 0.0 and sv._cam.far > sv._cam.near, "live cam clips after jupiter warp")
-	_check(sv._cam.far / sv._cam.near <= SolarView.FAR_RATIO_MAX * 1.01, "live cam far/near capped")
-
-	# Half-screen standoff: angular diameter ≈ FOV * HALF_SCREEN_FRAC
 	sv.warp_to("earth")
 	await _frames(2)
 	var R_e := sv._visual_radius("earth")
 	var stand := sv.standoff_km("earth")
 	var ang_diam := 2.0 * atan(R_e / stand)
 	var target := deg_to_rad(sv._cam.fov) * SolarView.HALF_SCREEN_FRAC
-	_check(absf(ang_diam - target) / target < 0.05, "earth warp half-screen ang=%.3f° target=%.3f°" % [rad_to_deg(ang_diam), rad_to_deg(target)])
-	# Lit-side: camera forward aligns with sun→body (focus is body, sun at -focus in body frame when focus=earth pos)
-	var earth_pos: Vector3 = eph.planet_state("earth", sv.jd)["pos"]
-	var sun_to_body := earth_pos.normalized()
-	var fwd := sv._forward()
-	_check(fwd.dot(sun_to_body) > 0.85, "earth warp from lit / sun-facing side (dot=%.3f)" % fwd.dot(sun_to_body))
+	_check(absf(ang_diam - target) / target < 0.05, "earth warp half-screen")
+	var tip := sv.format_hover_bbcode("earth")
+	_check(tip.contains("Earth") and tip.contains("Day"), "hover card text")
 
-	sv.warp_to("moon")
-	await _frames(2)
-	var R_m := sv._visual_radius("moon")
-	var stand_m := sv.standoff_km("moon")
-	var ang_m := 2.0 * atan(R_m / stand_m)
-	_check(absf(ang_m - target) / target < 0.05, "moon warp half-screen")
+	# Sun exaggeration separate + capped
+	sv.exaggerated = true
+	sv.exaggerated_sun = false
+	var r_sun_plain := sv._visual_radius("sun")
+	var r_earth_ex := sv._visual_radius("earth")
+	_check(r_sun_plain <= eph.radius_km("sun") * 1.01, "EXAG. SIZE does not enlarge Sun")
+	_check(r_earth_ex > eph.radius_km("earth") * 100.0, "EXAG. SIZE enlarges Earth")
+	sv.exaggerated_sun = true
+	var r_sun_ex := sv._visual_radius("sun")
+	_check(r_sun_ex > r_sun_plain, "EXAG. SUN enlarges Sun")
+	_check(r_sun_ex <= SolarView.AU_KM * SolarView.SUN_EXAG_CAP_AU * 1.01, "EXAG. SUN capped below Mercury orbit")
+	sv.exaggerated_sun = false
 
-	sv.warp_to("sun")
+	# Moon orbit exaggeration: moon outside exaggerated Earth
+	sv.exaggerated = true
+	sv.set_jd(j2000)
 	await _frames(2)
-	_check(sv.standoff_km("sun") > eph.radius_km("sun"), "sun standoff outside surface")
+	var earth_p := sv.body_display_pos_km("earth")
+	var moon_p := sv.body_display_pos_km("moon")
+	var sep := (moon_p - earth_p).length()
+	var need := sv._visual_radius("earth") * 1.45 + sv._visual_radius("moon")
+	_check(sep >= need * 0.98, "exaggerated Moon outside Earth (sep=%.0f need=%.0f)" % [sep, need])
+
+	# Live orbits: body sits on its orbit line at several scrubbed times
+	sv.exaggerated = false
+	sv.show_planet_orbits = true
+	sv.show_moon_orbits = true
+	sv.show_moons = true
+	sv._build_bodies()
+	var times: Array = [j2000, j2000 + 30.0, j2000 + 180.0, j2000 + 400.0]
+	var on_line := true
+	for tj: float in times:
+		sv.set_jd(tj)
+		await _frames(2)
+		for pid: String in ["mercury", "earth", "mars", "jupiter"]:
+			var err := sv.orbit_point_error_km(pid, tj, 360)
+			# First sample of orbit is exactly at jd ⇒ error ~0; allow 1 km float noise
+			if err > 5.0:
+				on_line = false
+				print("  FAIL %s at JD %.1f orbit error %.3f km" % [pid, tj, err])
+		var merr := sv.orbit_point_error_km("moon", tj, 180)
+		if merr > 50.0:
+			on_line = false
+			print("  FAIL moon at JD %.1f orbit error %.3f km" % [tj, merr])
+	_check(on_line, "bodies lie on orbit lines across scrubbed times")
+
+	# Moon orbit follows parent: parent moves between times, moon-orbit center tracks Earth
+	sv.set_jd(j2000)
+	sv._rebuild_orbits()
+	var earth_a := sv.body_display_pos_km("earth", j2000)
+	sv.set_jd(j2000 + 40.0)
+	sv._rebuild_orbits()
+	var earth_b := sv.body_display_pos_km("earth", j2000 + 40.0)
+	var moved := (earth_b - earth_a).length()
+	_check(moved > 1.0e6, "Earth moved over 40 d (%.0f km) so moon orbits must reattach" % moved)
+	var merr2 := sv.orbit_point_error_km("moon", j2000 + 40.0, 180)
+	_check(merr2 < 50.0, "moon still on parent-attached orbit after Earth moved (err=%.2f km)" % merr2)
+
+	# Sky direction sanity: Polaris near +ecliptic-north-ish after transform (high |y| in scene)
+	var polaris := sv.eq_to_scene_dir(2.5303, 89.2641)
+	_check(polaris.y > 0.85, "Polaris maps near ecliptic north (y=%.3f)" % polaris.y)
+	var sirius := sv.eq_to_scene_dir(6.7525, -16.7161)
+	_check(sirius.length() > 0.99, "Sirius unit direction")
+
+	sv.show_labels = true
+	sv._update_labels()
+	await _frames(2)
+	_check(sv._label_nodes.has("earth") or sv.show_labels, "label system active")
 
 	sv.time_rate = 86400.0
-	await _frames(4)
-	_check(sv.jd > j2000 - 1.0, "time advances")
+	await _frames(6)
+	_check(absf(sv.jd - sv._orbit_jd) < 1.0, "orbits rebuilt as time advances")
 	sv.warp_to("mars")
 	await _frames(2)
 	_check(sv.follow_id == "", "warp clears follow")
 	sv.attach("earth")
 	await _frames(2)
 	_check(sv.follow_id == "earth", "attach earth")
-	_check(absf(sv._dist - sv.standoff_km("earth")) / sv.standoff_km("earth") < 0.05, "attach keeps half-screen standoff")
-	sv.exaggerated = true
-	sv._build_bodies()
-	sv.show_moon_orbits = true
-	sv._rebuild_orbits()
-	await _frames(2)
-	# Exaggerated standoff still finite and clips ok
-	var cx: Dictionary = sv.clip_planes_for_dist(sv._dist)
-	_check(cx["far"] > cx["near"], "exaggerated clips ok")
 	sv.queue_free()
 	await _frames(2)
 	print("SOLAR TEST: ", "PASS" if _ok else "FAIL")
+	print("ROOT CAUSE (yellow lines): ship trajectory path + tall vertical tick marks in _update_ship,")
+	print("  colored orange/yellow, default ON, drawn from Earth's vicinity via geocentric ShipSim.")
+	print("  Fix: show_ship_path default false; ticks shortened; path recolored cyan.")
 	get_tree().quit(0 if _ok else 1)

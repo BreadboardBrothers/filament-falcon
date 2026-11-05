@@ -4,6 +4,7 @@ extends Control
 ## SolarEphemeris, orbit lines, warp/follow, time scrub, WASD+mouse camera, ship trajectory.
 ## Floating origin + scene-unit scaling + distant impostors keep depth precision across AU↔km.
 ## Hover ray-pick shows a fact card; warp frames the lit hemisphere at ~half screen height.
+## Labels, sky (stars/galaxies/Milky Way), separate Sun exaggeration, live orbit rebuild.
 
 signal time_changed(jd: float)
 signal status(msg: String)
@@ -11,24 +12,35 @@ signal status(msg: String)
 const AU_KM := 149597870.7
 const DAY := 86400.0
 const C_KM_S := 299792.458
-const SCENE_REF := 1000.0          # camera sits this far from focus in scene units
-const FAR_RATIO_MAX := 5.0e6       # near/far depth ratio cap
-const HALF_SCREEN_FRAC := 0.5      # planet diameter ≈ half of vertical FOV
+const SCENE_REF := 1000.0
+const FAR_RATIO_MAX := 5.0e6
+const HALF_SCREEN_FRAC := 0.5
+const OBLIQUITY := 0.409092804
+const PLANET_EXAG := 1200.0
+const SUN_EXAG_CAP_AU := 0.30
+const LABEL_PLANETS := ["sun", "mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "ceres", "eris", "haumea", "makemake"]
+const MAJOR_MOONS := ["moon", "io", "europa", "ganymede", "callisto", "titan", "triton", "charon", "rhea", "iapetus", "dione", "tethys", "enceladus", "miranda", "ariel", "umbriel", "titania", "oberon"]
 
 var eph := SolarEphemeris.new()
-var facts: Dictionary = {}         # id -> fact dict (from facts.json)
+var facts: Dictionary = {}
 var facts_meta: Dictionary = {}
 var jd := 2451545.0
 var time_rate := 0.0
 var exaggerated := false
+var exaggerated_sun := false
 var show_orbits := true
 var show_planet_orbits := true
 var show_moon_orbits := false
 var show_moons := true
-var show_ship_path := true
+var show_ship_path := false
+var show_labels := true
+var show_moon_labels := false
+var show_sky := true
+var show_constellations := false
+var show_galaxies := true
 var follow_id := ""
 var follow_rotating := false
-var follow_keep_lit := true        # attach keeps sun-facing half-screen framing
+var follow_keep_lit := true
 var pred_span_s := DAY * 7.0
 var cam_speed := 5e5
 var auto_speed := true
@@ -44,7 +56,7 @@ var _ship_path_mesh: MeshInstance3D
 var _focus := Vector3.ZERO
 var _yaw := 0.3
 var _pitch := -0.4
-var _dist := AU_KM * 3.0           # camera distance from focus (km)
+var _dist := AU_KM * 3.0
 var _look := Vector3.ZERO
 var _rmb := false
 var _keys := {}
@@ -53,7 +65,7 @@ var _mat_body: Shader
 var _mat_ring: Shader
 var _last_rebuild_moons := true
 var last_warp_id := "earth"
-var _moon_vis := {}                # id -> bool hysteresis
+var _moon_vis := {}
 var _hover_id := ""
 var _hover_panel: PanelContainer
 var _hover_label: RichTextLabel
@@ -61,6 +73,20 @@ var _mouse_in := false
 var _last_mouse := Vector2.ZERO
 var _moving_hide := false
 var _hover_idle_t := 0.0
+var _orbit_jd := -1.0e30
+var _orbit_rebuild_cool := 0.0
+var _label_layer: Control
+var _label_nodes := {}
+var _sky_root: Node3D
+var _sky_mesh: MeshInstance3D
+var _star_mesh: MeshInstance3D
+var _const_mesh: MeshInstance3D
+var _galaxy_nodes: Array = []
+var _sky_stars: Array = []
+var _sky_const: Array = []
+var _sky_galaxies: Array = []
+var _env: Environment
+var _world_env: WorldEnvironment
 
 
 func _ready() -> void:
@@ -70,6 +96,7 @@ func _ready() -> void:
 	_mat_body = load("res://shaders/solar/body.gdshader")
 	_mat_ring = load("res://shaders/solar/ring.gdshader")
 	_load_facts()
+	_load_sky_catalogs()
 	_vp = SubViewport.new()
 	_vp.own_world_3d = true
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
@@ -89,18 +116,18 @@ func _ready() -> void:
 	_cam.near = 0.1
 	_cam.far = 1.0e7
 	_root.add_child(_cam)
-	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.01, 0.015, 0.03)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.03, 0.04, 0.06)
-	e.ambient_light_energy = 0.4
-	e.tonemap_mode = Environment.TONE_MAPPER_ACES
-	e.glow_enabled = true
-	e.glow_intensity = 0.4
-	env.environment = e
-	_root.add_child(env)
+	_world_env = WorldEnvironment.new()
+	_env = Environment.new()
+	_env.background_mode = Environment.BG_COLOR
+	_env.background_color = Color(0.01, 0.015, 0.03)
+	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	_env.ambient_light_color = Color(0.03, 0.04, 0.06)
+	_env.ambient_light_energy = 0.35
+	_env.tonemap_mode = Environment.TONE_MAPPER_ACES
+	_env.glow_enabled = true
+	_env.glow_intensity = 0.35
+	_world_env.environment = _env
+	_root.add_child(_world_env)
 	_sun_light = DirectionalLight3D.new()
 	_sun_light.light_energy = 1.6
 	_sun_light.shadow_enabled = true
@@ -125,18 +152,28 @@ func _ready() -> void:
 	sm.height = 2.0
 	_ship_mesh.mesh = sm
 	var smat := StandardMaterial3D.new()
-	smat.albedo_color = Color(1.0, 0.4, 0.1)
+	smat.albedo_color = Color(0.2, 0.85, 1.0)
 	smat.emission_enabled = true
-	smat.emission = Color(1.0, 0.5, 0.1)
+	smat.emission = Color(0.2, 0.7, 1.0)
 	_ship_mesh.material_override = smat
 	_root.add_child(_ship_mesh)
+	_build_sky()
 	_build_hover_ui()
+	_build_label_layer()
 	if not eph.load_catalog():
 		status.emit("solar catalog missing")
 		return
 	_build_bodies()
 	set_to_now()
 	_rebuild_orbits()
+
+
+func _build_label_layer() -> void:
+	_label_layer = Control.new()
+	_label_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_label_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_label_layer.z_index = 5
+	add_child(_label_layer)
 
 
 func _build_hover_ui() -> void:
@@ -183,6 +220,23 @@ func _load_facts() -> void:
 			facts[str(k)] = bodies[k]
 
 
+func _load_sky_catalogs() -> void:
+	_sky_stars.clear()
+	_sky_const.clear()
+	_sky_galaxies.clear()
+	var sp := "res://data/solar/sky_stars.json"
+	if FileAccess.file_exists(sp):
+		var js: Variant = JSON.parse_string(FileAccess.get_file_as_string(sp))
+		if js is Dictionary:
+			_sky_stars = (js as Dictionary).get("stars", [])
+			_sky_const = (js as Dictionary).get("constellations", [])
+	var gp := "res://data/solar/sky_galaxies.json"
+	if FileAccess.file_exists(gp):
+		var jg: Variant = JSON.parse_string(FileAccess.get_file_as_string(gp))
+		if jg is Dictionary:
+			_sky_galaxies = (jg as Dictionary).get("galaxies", [])
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED and _vp:
 		_vp.size = Vector2i(maxi(int(size.x), 16), maxi(int(size.y), 16))
@@ -196,25 +250,24 @@ func _notification(what: int) -> void:
 func set_to_now() -> void:
 	jd = SolarEphemeris.unix_to_jd(Time.get_unix_time_from_system())
 	time_changed.emit(jd)
+	_force_orbit_rebuild()
 	queue_redraw()
 
 
 func set_jd(j: float) -> void:
 	jd = j
 	time_changed.emit(jd)
+	_force_orbit_rebuild()
 
 
-## Standoff distance (km) so the body's visual diameter fills ~HALF_SCREEN_FRAC of vertical FOV.
 func standoff_km(id: String) -> float:
 	var R := _visual_radius(id)
 	var fov := deg_to_rad(_cam.fov if _cam else 70.0)
-	# diameter angular size = fov * HALF_SCREEN_FRAC ⇒ angular radius = fov * frac / 2
 	var half_ang := fov * HALF_SCREEN_FRAC * 0.5
 	var d := R / maxf(tan(half_ang), 1e-8)
 	return maxf(d, R * 1.2 + 5.0)
 
 
-## Near/far clip planes (scene units) for a camera distance in km. Public for headless tests.
 func clip_planes_for_dist(dist_km: float, nearest_surface_km: float = -1.0) -> Dictionary:
 	var d := maxf(dist_km, 1.0)
 	var s := SCENE_REF / d
@@ -223,7 +276,6 @@ func clip_planes_for_dist(dist_km: float, nearest_surface_km: float = -1.0) -> D
 		near_km = maxf(nearest_surface_km * 0.15, d * 1e-5)
 	near_km = clampf(near_km, 0.05 / s, d * 0.35)
 	var far_km := maxf(d * 80.0, AU_KM * 2.0)
-	# Keep local neighborhood in the precision band; distant bodies use impostors.
 	var local_horizon_km := maxf(d * 60.0, AU_KM * 0.05)
 	far_km = minf(far_km, local_horizon_km * 1.4)
 	var near_u := maxf(near_km * s, 0.02)
@@ -231,12 +283,8 @@ func clip_planes_for_dist(dist_km: float, nearest_surface_km: float = -1.0) -> D
 	if far_u / near_u > FAR_RATIO_MAX:
 		far_u = near_u * FAR_RATIO_MAX
 	return {
-		"near": near_u,
-		"far": far_u,
-		"scale": s,
-		"local_horizon_km": local_horizon_km,
-		"near_km": near_km,
-		"far_km": far_km,
+		"near": near_u, "far": far_u, "scale": s,
+		"local_horizon_km": local_horizon_km, "near_km": near_km, "far_km": far_km,
 	}
 
 
@@ -248,7 +296,7 @@ func warp_to(id: String) -> void:
 	if not st.get("ok", false) and id != "sun":
 		return
 	_apply_lit_framing(id, st.get("pos", Vector3.ZERO))
-	_rebuild_orbits()
+	_force_orbit_rebuild()
 	last_warp_id = id
 	status.emit("warped to " + str(eph.bodies[id].get("name", id)))
 
@@ -261,7 +309,7 @@ func attach(id: String, rotating := false) -> void:
 	var st := eph.state(id, jd) if id != "sun" else {"pos": Vector3.ZERO, "ok": true}
 	if st.get("ok", false) or id == "sun":
 		_apply_lit_framing(id, st.get("pos", Vector3.ZERO))
-		_rebuild_orbits()
+		_force_orbit_rebuild()
 	status.emit(("attached (rotating)" if rotating else "attached") + " to " + id)
 
 
@@ -270,18 +318,71 @@ func detach() -> void:
 	status.emit("camera free")
 
 
-## Place focus on body, set half-screen standoff, approach from Sun-facing (lit) side.
 func _apply_lit_framing(id: String, body_pos: Vector3) -> void:
 	_focus = body_pos if id != "sun" else Vector3.ZERO
 	_dist = standoff_km(id)
 	var from_sun := body_pos if body_pos.length() > 1.0 else Vector3(1.0, 0.15, 0.35)
 	if id == "sun":
-		# Approach the Sun from a slight ecliptic offset so the disc isn't edge-on to light.
 		from_sun = Vector3(1.0, 0.2, 0.4)
 	var dir := from_sun.normalized()
-	# Camera sits between Sun and body: forward = dir (see _update_camera).
 	_pitch = asin(clampf(dir.y, -0.99, 0.99))
 	_yaw = atan2(-dir.x, -dir.z)
+
+
+func _force_orbit_rebuild() -> void:
+	_orbit_jd = -1.0e30
+	_orbit_rebuild_cool = 0.0
+	_rebuild_orbits()
+
+
+## Heliocentric display position (km), with moon-orbit exaggeration when enabled.
+func body_display_pos_km(id: String, at_jd: float = -1.0) -> Vector3:
+	var j := jd if at_jd < 0.0 else at_jd
+	if id == "sun":
+		return Vector3.ZERO
+	if not eph.bodies.has(id):
+		return Vector3.ZERO
+	var st := eph.state(id, j)
+	if not st.get("ok", false):
+		return Vector3.ZERO
+	var pos: Vector3 = st["pos"]
+	var kind := str(eph.bodies[id].get("kind", ""))
+	if kind == "moon" and exaggerated:
+		var parent_id := str(eph.bodies[id].get("parent", ""))
+		var pst := eph.state(parent_id, j)
+		var parent_pos: Vector3 = pst.get("pos", Vector3.ZERO) if pst.get("ok", false) else Vector3.ZERO
+		var rel := pos - parent_pos
+		return parent_pos + rel * _moon_orbit_scale(id, parent_id)
+	return pos
+
+
+func _moon_orbit_scale(moon_id: String, parent_id: String) -> float:
+	if not exaggerated:
+		return 1.0
+	var st := eph.state(moon_id, jd)
+	var pst := eph.state(parent_id, jd)
+	if not st.get("ok", false) or not pst.get("ok", false):
+		return 1.0
+	var a_true := ((st["pos"] as Vector3) - (pst["pos"] as Vector3)).length()
+	var need := _visual_radius(parent_id) * 1.45 + _visual_radius(moon_id)
+	return maxf(1.0, need / maxf(a_true, 1.0))
+
+
+func _visual_radius(id: String) -> float:
+	var R := eph.radius_km(id)
+	var kind := str(eph.bodies.get(id, {}).get("kind", ""))
+	if id == "sun" or kind == "star":
+		if not exaggerated_sun:
+			return maxf(R, 1.0)
+		# Cap so exaggerated Sun never reaches Mercury's orbit (~0.39 AU).
+		var capped := minf(R * PLANET_EXAG, AU_KM * SUN_EXAG_CAP_AU)
+		return maxf(capped, R)
+	if not exaggerated:
+		return maxf(R, 1.0)
+	# Planets, dwarfs, moons share EXAG. SIZE.
+	if kind == "moon":
+		return maxf(R * PLANET_EXAG, AU_KM * 0.00015)
+	return maxf(R * PLANET_EXAG, AU_KM * 0.0008)
 
 
 func _build_bodies() -> void:
@@ -380,53 +481,105 @@ func _load_tex(path: String) -> Texture2D:
 	return t
 
 
-func _visual_radius(id: String) -> float:
-	var R := eph.radius_km(id)
-	if not exaggerated:
-		return maxf(R, 1.0)
-	return maxf(R * 1200.0, AU_KM * 0.0008)
-
-
 func _rebuild_orbits() -> void:
+	_orbit_jd = jd
 	var imm := ImmediateMesh.new()
 	if show_orbits:
 		if show_planet_orbits:
 			for id: String in ["mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "ceres"]:
-				_orbit_line(imm, id, Color(0.4, 0.7, 1.0, 0.35), 180)
+				_orbit_line_planet(imm, id, Color(0.4, 0.7, 1.0, 0.35), 180)
 		if show_moon_orbits and show_moons:
 			for m: Dictionary in eph.moons:
 				if m.get("placeholder", false):
 					continue
-				if float(m.get("radius_km", 0.0)) < 100.0 and not bool(m.get("tidally_locked", false)):
+				var mid := str(m["id"])
+				if float(m.get("radius_km", 0.0)) < 100.0 and mid not in MAJOR_MOONS:
 					continue
-				_orbit_line(imm, str(m["id"]), Color(0.7, 0.7, 0.5, 0.25), 96)
+				_orbit_line_moon(imm, mid, Color(0.55, 0.75, 0.55, 0.35), 96)
 	_orbit_mesh.mesh = imm
 
 
-func _orbit_line(imm: ImmediateMesh, id: String, col: Color, steps: int) -> void:
+func _orbit_line_planet(imm: ImmediateMesh, id: String, col: Color, steps: int) -> void:
 	if not eph.bodies.has(id):
 		return
 	var b: Dictionary = eph.bodies[id]
 	imm.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
 	imm.surface_set_color(col)
-	var kind := str(b.get("kind", ""))
 	var s := SCENE_REF / maxf(_dist, 1.0)
+	var dL := float(b.get("dL_deg_cy", 360.0))
+	var days_per_orbit := 360.0 / maxf(absf(dL) / 36525.0, 1e-6)
 	for i in steps + 1:
 		var frac := float(i) / float(steps)
-		var jdx := jd
-		var st: Dictionary
-		if kind == "moon":
-			var period := float(b.get("period_d", 1.0))
-			jdx = jd + frac * period
-			st = eph.moon_state(id, jdx)
-		else:
-			var dL := float(b.get("dL_deg_cy", 360.0))
-			var days_per_orbit := 360.0 / maxf(absf(dL) / 36525.0, 1e-6)
-			jdx = jd + frac * days_per_orbit
-			st = eph.planet_state(id, jdx)
+		var st := eph.planet_state(id, jd + frac * days_per_orbit)
 		if st.get("ok", false):
 			imm.surface_add_vertex((st["pos"] - _focus) * s)
 	imm.surface_end()
+
+
+## Moon orbit attached to parent's *current* position (follows the planet as time advances).
+func _orbit_line_moon(imm: ImmediateMesh, id: String, col: Color, steps: int) -> void:
+	if not eph.bodies.has(id):
+		return
+	var b: Dictionary = eph.bodies[id]
+	var parent_id := str(b.get("parent", ""))
+	var parent_now := eph.state(parent_id, jd)
+	if not parent_now.get("ok", false):
+		return
+	var parent_pos: Vector3 = parent_now["pos"]
+	var period := float(b.get("period_d", 1.0))
+	var scale_orb := _moon_orbit_scale(id, parent_id)
+	var s := SCENE_REF / maxf(_dist, 1.0)
+	imm.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
+	imm.surface_set_color(col)
+	for i in steps + 1:
+		var frac := float(i) / float(steps)
+		var st := eph.moon_state(id, jd + frac * period)
+		var pst := eph.state(parent_id, jd + frac * period)
+		if st.get("ok", false) and pst.get("ok", false):
+			var rel: Vector3 = (st["pos"] as Vector3) - (pst["pos"] as Vector3)
+			imm.surface_add_vertex((parent_pos + rel * scale_orb - _focus) * s)
+	imm.surface_end()
+
+
+## Closest distance (km) from body display position to its orbit polyline samples.
+func orbit_point_error_km(id: String, at_jd: float, steps: int = 180) -> float:
+	if not eph.bodies.has(id) or id == "sun":
+		return 0.0
+	var kind := str(eph.bodies[id].get("kind", ""))
+	var body_p := body_display_pos_km(id, at_jd)
+	var best := 1.0e300
+	if kind == "moon":
+		var b: Dictionary = eph.bodies[id]
+		var parent_id := str(b.get("parent", ""))
+		var parent_now := eph.state(parent_id, at_jd)
+		if not parent_now.get("ok", false):
+			return best
+		var parent_pos: Vector3 = parent_now["pos"]
+		var period := float(b.get("period_d", 1.0))
+		var scale_orb := 1.0
+		# temporarily evaluate scale at at_jd
+		var saved := jd
+		jd = at_jd
+		scale_orb = _moon_orbit_scale(id, parent_id)
+		jd = saved
+		for i in steps + 1:
+			var frac := float(i) / float(steps)
+			var st := eph.moon_state(id, at_jd + frac * period)
+			var pst := eph.state(parent_id, at_jd + frac * period)
+			if st.get("ok", false) and pst.get("ok", false):
+				var rel: Vector3 = (st["pos"] as Vector3) - (pst["pos"] as Vector3)
+				var pt: Vector3 = parent_pos + rel * scale_orb
+				best = minf(best, (pt - body_p).length())
+		return best
+	var b2: Dictionary = eph.bodies[id]
+	var dL := float(b2.get("dL_deg_cy", 360.0))
+	var days_per_orbit := 360.0 / maxf(absf(dL) / 36525.0, 1e-6)
+	for i in steps + 1:
+		var frac2 := float(i) / float(steps)
+		var st2 := eph.planet_state(id, at_jd + frac2 * days_per_orbit)
+		if st2.get("ok", false):
+			best = minf(best, ((st2["pos"] as Vector3) - body_p).length())
+	return best
 
 
 func _process(dt: float) -> void:
@@ -436,9 +589,15 @@ func _process(dt: float) -> void:
 		jd += time_rate * dt / DAY
 		time_changed.emit(jd)
 	_update_follow()
+	_orbit_rebuild_cool = maxf(_orbit_rebuild_cool - dt, 0.0)
+	if absf(jd - _orbit_jd) > 0.01 and _orbit_rebuild_cool <= 0.0:
+		_rebuild_orbits()
+		_orbit_rebuild_cool = 0.2
 	_update_bodies_and_clips()
 	_update_camera(dt)
 	_update_ship()
+	_update_sky_orientation()
+	_update_labels()
 	if _hover_idle_t > 0.0:
 		_hover_idle_t = maxf(_hover_idle_t - dt, 0.0)
 		if _hover_idle_t == 0.0:
@@ -454,32 +613,30 @@ func _update_follow() -> void:
 	if follow_id == "sun":
 		_focus = Vector3.ZERO
 	elif st.get("ok", false):
-		_focus = st["pos"]
+		_focus = body_display_pos_km(follow_id)
 	if follow_keep_lit:
 		_dist = standoff_km(follow_id)
-		_apply_lit_framing(follow_id, st.get("pos", Vector3.ZERO) if follow_id != "sun" else Vector3.ZERO)
+		_apply_lit_framing(follow_id, body_display_pos_km(follow_id) if follow_id != "sun" else Vector3.ZERO)
 
 
 func _update_bodies_and_clips() -> void:
 	if show_moons != _last_rebuild_moons:
 		_last_rebuild_moons = show_moons
 		_build_bodies()
-		_rebuild_orbits()
+		_force_orbit_rebuild()
 	var nearest_surf := _dist
 	var clips := clip_planes_for_dist(_dist)
 	var s: float = clips["scale"]
 	var horizon: float = clips["local_horizon_km"]
 	for id: String in _body_nodes.keys():
 		var n: Node3D = _body_nodes[id]
-		var st := eph.state(id, jd) if id != "sun" else {"pos": Vector3.ZERO, "ok": true}
-		var rel: Vector3 = st.get("pos", Vector3.ZERO) - _focus
+		var world := body_display_pos_km(id)
+		var rel: Vector3 = world - _focus
 		var d_true := rel.length()
 		var R := _visual_radius(id)
-		# Track nearest surface for clip near plane.
 		var surf := maxf(d_true - R, 0.0)
 		if id != "sun" or d_true > 1.0:
 			nearest_surf = minf(nearest_surf, surf if d_true > 1.0 else _dist)
-		# Distant impostor: place along same direction closer in, preserve angular size.
 		var place := d_true
 		var scale_R := R
 		if d_true > horizon and d_true > 1.0:
@@ -491,7 +648,6 @@ func _update_bodies_and_clips() -> void:
 		var mesh := n.get_child(0) as Node3D
 		if mesh:
 			mesh.rotation.y = eph.spin_angle(id, jd)
-		# Stable LOD for moons: angular-size hysteresis (no min-pixel flicker).
 		var kind := str(eph.bodies[id].get("kind", ""))
 		if kind == "moon":
 			var cam_d := maxf((n.position - (-_forward() * SCENE_REF)).length(), 1e-3)
@@ -501,7 +657,6 @@ func _update_bodies_and_clips() -> void:
 				vis = false
 			elif (not vis) and ang > 4.0e-4:
 				vis = true
-			# Always keep major moons when their parent is the focus neighbourhood.
 			if float(eph.bodies[id].get("radius_km", 0.0)) >= 200.0 and d_true < horizon * 1.5:
 				vis = show_moons
 			_moon_vis[id] = vis
@@ -514,10 +669,6 @@ func _update_bodies_and_clips() -> void:
 	var sun_dir := (-_focus) if _focus.length() > 1.0 else Vector3(1, 0.3, 0.2)
 	_sun_light.position = sun_dir.normalized() * 100.0
 	_sun_light.look_at(Vector3.ZERO)
-	# Orbit mesh lives in scene units relative to focus.
-	_orbit_mesh.scale = Vector3.ONE
-	# Rebuild orbit vertex scale occasionally via existing mesh (scaled at rebuild).
-	# Keep ship path scaled in _update_ship.
 
 
 func _forward() -> Vector3:
@@ -534,13 +685,9 @@ func _update_camera(dt: float) -> void:
 		for id: String in ["sun", "mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune"]:
 			if not _body_nodes.has(id):
 				continue
-			var rel_len := _focus.length() if id == "sun" else _dist
-			if id == "sun":
-				rel_len = maxf(_focus.length(), 1.0)
-			else:
-				var st2 := eph.state(id, jd)
-				if st2.get("ok", false):
-					rel_len = maxf((st2["pos"] - _focus).length(), 1.0)
+			var rel_len := maxf(_focus.length(), 1.0) if id == "sun" else _dist
+			if id != "sun":
+				rel_len = maxf((body_display_pos_km(id) - _focus).length(), 1.0)
 			nearest = minf(nearest, rel_len)
 		spd = clampf(nearest * 0.5, 100.0, AU_KM * 2.0)
 		cam_speed = spd
@@ -553,7 +700,7 @@ func _update_camera(dt: float) -> void:
 	if _keys.get("E", false): move += up
 	if move != Vector3.ZERO and follow_id == "":
 		_focus += move.normalized() * spd * dt
-		_rebuild_orbits()
+		_force_orbit_rebuild()
 	_look = _focus
 	_cam.position = -forward * SCENE_REF
 	_cam.look_at(Vector3.ZERO, Vector3.UP)
@@ -575,6 +722,7 @@ func _update_ship() -> void:
 	_ship_mesh.visible = true
 	_ship_mesh.position = (ship_ecl - _focus) * s
 	_ship_mesh.scale = Vector3.ONE * maxf(_visual_radius("earth") * 0.05, 50.0) * s
+	# Root cause of "yellow lines from Earth": trajectory + tall tick marks (was default ON).
 	if not show_ship_path:
 		_ship_path_mesh.mesh = null
 		return
@@ -583,23 +731,303 @@ func _update_ship() -> void:
 	var path: Array = eph.propagate_ship(ship_ecl, v_km_s, jd, pred_span_s, 256)
 	var imm := ImmediateMesh.new()
 	imm.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
-	imm.surface_set_color(Color(1.0, 0.55, 0.15, 0.9))
+	imm.surface_set_color(Color(0.25, 0.85, 1.0, 0.85))
 	for pt: Dictionary in path:
 		imm.surface_add_vertex((pt["pos"] - _focus) * s)
 	imm.surface_end()
+	# Small tick marks (not long rays) every ~span/8.
 	imm.surface_begin(Mesh.PRIMITIVE_LINES)
-	imm.surface_set_color(Color(1.0, 0.8, 0.3, 0.8))
+	imm.surface_set_color(Color(0.45, 0.9, 1.0, 0.7))
 	var n := path.size()
+	var tick := maxf(SCENE_REF * 0.0004, 0.05)
 	for i in 8:
 		var idx := int(float(i) / 8.0 * float(n - 1))
 		var p: Vector3 = (path[idx]["pos"] - _focus) * s
-		imm.surface_add_vertex(p)
-		imm.surface_add_vertex(p + Vector3(0, maxf(SCENE_REF * 0.002, 0.2), 0))
+		imm.surface_add_vertex(p - Vector3(0, tick, 0))
+		imm.surface_add_vertex(p + Vector3(0, tick, 0))
 	imm.surface_end()
 	_ship_path_mesh.mesh = imm
 
 
-## Ray / sphere pick with generous radius for tiny bodies. Returns body id or "".
+## Equatorial J2000 (RA hours, Dec deg) → unit vector in our ecliptic-mapped scene frame.
+func eq_to_scene_dir(ra_h: float, dec_deg: float) -> Vector3:
+	var ra := ra_h * TAU / 24.0
+	var dec := deg_to_rad(dec_deg)
+	var x_eq := cos(dec) * cos(ra)
+	var y_eq := cos(dec) * sin(ra)
+	var z_eq := sin(dec)
+	var ce := cos(OBLIQUITY)
+	var se := sin(OBLIQUITY)
+	var x_ec := x_eq
+	var y_ec := y_eq * ce + z_eq * se
+	var z_ec := -y_eq * se + z_eq * ce
+	# Match ephemeris mapping: (x, z, -y)
+	return Vector3(x_ec, z_ec, -y_ec).normalized()
+
+
+func _bv_to_color(bv: float) -> Color:
+	var t := clampf((bv + 0.4) / 2.0, 0.0, 1.0)
+	return Color(0.55 + 0.45 * t, 0.7 + 0.15 * (1.0 - absf(t - 0.4)), 1.0 - 0.55 * t)
+
+
+func _build_sky() -> void:
+	_sky_root = Node3D.new()
+	_sky_root.name = "Sky"
+	_root.add_child(_sky_root)
+	# Milky Way / starfield sphere (texture optional; dark fallback).
+	_sky_mesh = MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 1.0
+	sphere.height = 2.0
+	sphere.radial_segments = 64
+	sphere.rings = 32
+	_sky_mesh.mesh = sphere
+	var sky_mat := StandardMaterial3D.new()
+	sky_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sky_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	sky_mat.albedo_color = Color(0.02, 0.03, 0.05)
+	var mw := _load_tex(Geo.asset_dir() + "/solar/stars_milky_way.jpg")
+	if mw == null:
+		mw = _load_tex(Geo.asset_dir() + "/solar/milky_way.jpg")
+	if mw:
+		sky_mat.albedo_texture = mw
+		sky_mat.albedo_color = Color(0.7, 0.75, 0.85)
+	sky_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_sky_mesh.material_override = sky_mat
+	_sky_root.add_child(_sky_mesh)
+	# Bright stars as point mesh.
+	_star_mesh = MeshInstance3D.new()
+	var imm := ImmediateMesh.new()
+	imm.surface_begin(Mesh.PRIMITIVE_POINTS)
+	for st: Variant in _sky_stars:
+		if not (st is Dictionary):
+			continue
+		var d: Dictionary = st
+		var dir := eq_to_scene_dir(float(d.get("ra_h", 0.0)), float(d.get("dec_deg", 0.0)))
+		var mag := float(d.get("mag", 3.0))
+		var bright := clampf(1.2 - mag * 0.18, 0.15, 1.2)
+		imm.surface_set_color(_bv_to_color(float(d.get("bv", 0.0))) * bright)
+		imm.surface_add_vertex(dir)
+	imm.surface_end()
+	_star_mesh.mesh = imm
+	var smat := StandardMaterial3D.new()
+	smat.vertex_color_use_as_albedo = true
+	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	smat.use_point_size = true
+	smat.point_size = 3.0
+	smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_star_mesh.material_override = smat
+	_sky_root.add_child(_star_mesh)
+	# Constellation lines.
+	_const_mesh = MeshInstance3D.new()
+	var by_name := {}
+	for st2: Variant in _sky_stars:
+		if st2 is Dictionary:
+			by_name[str((st2 as Dictionary).get("name", ""))] = st2
+	var cimm := ImmediateMesh.new()
+	cimm.surface_begin(Mesh.PRIMITIVE_LINES)
+	cimm.surface_set_color(Color(0.45, 0.55, 0.75, 0.35))
+	for c: Variant in _sky_const:
+		if not (c is Dictionary):
+			continue
+		for edge: Variant in (c as Dictionary).get("edges", []):
+			if not (edge is Array) or (edge as Array).size() < 2:
+				continue
+			var a := str(edge[0])
+			var b := str(edge[1])
+			if not by_name.has(a) or not by_name.has(b):
+				continue
+			var da: Dictionary = by_name[a]
+			var db: Dictionary = by_name[b]
+			cimm.surface_add_vertex(eq_to_scene_dir(float(da["ra_h"]), float(da["dec_deg"])))
+			cimm.surface_add_vertex(eq_to_scene_dir(float(db["ra_h"]), float(db["dec_deg"])))
+	cimm.surface_end()
+	_const_mesh.mesh = cimm
+	var cmat := StandardMaterial3D.new()
+	cmat.vertex_color_use_as_albedo = true
+	cmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_const_mesh.material_override = cmat
+	_sky_root.add_child(_const_mesh)
+	# Galaxies as oriented quads.
+	_galaxy_nodes.clear()
+	for g: Variant in _sky_galaxies:
+		if not (g is Dictionary):
+			continue
+		var gd: Dictionary = g
+		var gn := MeshInstance3D.new()
+		var quad := QuadMesh.new()
+		quad.size = Vector2(1.0, 1.0)
+		gn.mesh = quad
+		var gmat := StandardMaterial3D.new()
+		gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		gmat.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
+		var col: Array = gd.get("color", [0.7, 0.75, 0.9])
+		gmat.albedo_color = Color(col[0], col[1], col[2], 0.85)
+		var tex := _load_tex(Geo.asset_dir() + "/solar/sky/" + str(gd.get("texture", "")))
+		if tex:
+			gmat.albedo_texture = tex
+			gmat.albedo_color = Color(1, 1, 1, 0.95)
+		gn.material_override = gmat
+		gn.set_meta("ra_h", float(gd.get("ra_h", 0.0)))
+		gn.set_meta("dec_deg", float(gd.get("dec_deg", 0.0)))
+		gn.set_meta("ang_maj_deg", float(gd.get("ang_maj_deg", 0.2)))
+		gn.set_meta("ang_min_deg", float(gd.get("ang_min_deg", 0.1)))
+		gn.set_meta("pa_deg", float(gd.get("pa_deg", 0.0)))
+		_sky_root.add_child(gn)
+		_galaxy_nodes.append(gn)
+	_apply_sky_visibility()
+
+
+func _apply_sky_visibility() -> void:
+	if _sky_root:
+		_sky_root.visible = show_sky
+	if _const_mesh:
+		_const_mesh.visible = show_sky and show_constellations
+	if _star_mesh:
+		_star_mesh.visible = show_sky
+	if _sky_mesh:
+		_sky_mesh.visible = show_sky
+	for gn: Variant in _galaxy_nodes:
+		(gn as Node3D).visible = show_sky and show_galaxies
+
+
+func _update_sky_orientation() -> void:
+	if _sky_root == null or not show_sky:
+		return
+	# Keep sky centered on camera (infinite background) at ~0.92 * far.
+	var sky_r := maxf(_cam.far * 0.9, SCENE_REF * 40.0)
+	_sky_root.global_position = _cam.global_position
+	_sky_mesh.scale = Vector3.ONE * sky_r
+	_star_mesh.scale = Vector3.ONE * (sky_r * 0.98)
+	_const_mesh.scale = Vector3.ONE * (sky_r * 0.97)
+	# Galaxies: place on sphere with angular size → physical size at sky_r.
+	for gn: Variant in _galaxy_nodes:
+		var n: MeshInstance3D = gn
+		var dir := eq_to_scene_dir(float(n.get_meta("ra_h")), float(n.get_meta("dec_deg")))
+		var maj := deg_to_rad(float(n.get_meta("ang_maj_deg")))
+		var mn := deg_to_rad(float(n.get_meta("ang_min_deg")))
+		var dist := sky_r * 0.95
+		n.position = dir * dist
+		var w := 2.0 * dist * tan(maj * 0.5)
+		var h := 2.0 * dist * tan(mn * 0.5)
+		n.scale = Vector3(maxf(w, 0.01), maxf(h, 0.01), 1.0)
+		n.look_at(_cam.global_position, Vector3.UP)
+		n.rotate_object_local(Vector3.FORWARD, deg_to_rad(float(n.get_meta("pa_deg"))))
+
+
+func _ensure_label(id: String) -> Dictionary:
+	if _label_nodes.has(id):
+		return _label_nodes[id]
+	var lab := Label.new()
+	lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lab.add_theme_font_size_override("font_size", 12)
+	lab.add_theme_color_override("font_color", Color(0.95, 0.9, 0.7))
+	lab.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	lab.add_theme_constant_override("outline_size", 4)
+	_label_layer.add_child(lab)
+	var line := Line2D.new()
+	line.width = 1.2
+	line.default_color = Color(0.85, 0.75, 0.4, 0.7)
+	_label_layer.add_child(line)
+	var entry: Dictionary = {"lab": lab, "line": line}
+	_label_nodes[id] = entry
+	return entry
+
+
+func _update_labels() -> void:
+	if _label_layer == null or _cam == null:
+		return
+	var want: Array = []
+	if show_labels:
+		for id: String in LABEL_PLANETS:
+			if _body_nodes.has(id):
+				want.append(id)
+		if show_moon_labels and show_moons:
+			for mid: String in MAJOR_MOONS:
+				if _body_nodes.has(mid) and (_body_nodes[mid] as Node3D).visible:
+					want.append(mid)
+	# Hide unused
+	for id: String in _label_nodes.keys():
+		if id not in want:
+			var e: Dictionary = _label_nodes[id]
+			var lb: Label = e.get("lab") as Label
+			var ln: Line2D = e.get("line") as Line2D
+			if lb: lb.visible = false
+			if ln: ln.visible = false
+	if not show_labels:
+		return
+	var placed: Array = []  # Rect2
+	# Sort by distance (near first keeps priority)
+	var items: Array = []
+	for id: String in want:
+		var n: Node3D = _body_nodes[id]
+		var d := (n.global_position - _cam.global_position).length()
+		items.append({"id": id, "d": d, "n": n})
+	items.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return float(a["d"]) < float(b["d"]))
+	for it: Dictionary in items:
+		var id2: String = it["id"]
+		var n2: Node3D = it["n"]
+		var entry: Dictionary = _ensure_label(id2)
+		var lab: Label = entry.get("lab") as Label
+		var line: Line2D = entry.get("line") as Line2D
+		if lab == null or line == null:
+			continue
+		if _cam.is_position_behind(n2.global_position):
+			lab.visible = false
+			line.visible = false
+			continue
+		var sp: Vector2 = _cam.unproject_position(n2.global_position)
+		# Fade by distance / angular size
+		var Rscene: float = n2.scale.x
+		var ang := Rscene / maxf(float(it["d"]), 1e-3)
+		var alpha := clampf(0.15 + ang * 80.0, 0.25, 1.0)
+		if float(it["d"]) > SCENE_REF * 80.0:
+			alpha *= 0.5
+		var bname := str(eph.bodies[id2].get("name", id2))
+		lab.text = bname
+		lab.modulate = Color(1, 1, 1, alpha)
+		var offset := Vector2(14, -18)
+		var lp := sp + offset
+		# Declutter
+		var rect := Rect2(lp, lab.get_minimum_size() + Vector2(8, 4))
+		var clash := false
+		for r: Variant in placed:
+			if rect.intersects(r as Rect2):
+				clash = true
+				break
+		if clash and str(eph.bodies[id2].get("kind", "")) == "moon":
+			lab.visible = false
+			line.visible = false
+			continue
+		if clash:
+			# nudge downward a few times
+			for k in 4:
+				lp.y += 16.0
+				rect = Rect2(lp, lab.get_minimum_size() + Vector2(8, 4))
+				clash = false
+				for r2: Variant in placed:
+					if rect.intersects(r2 as Rect2):
+						clash = true
+						break
+				if not clash:
+					break
+		if clash:
+			lab.visible = false
+			line.visible = false
+			continue
+		lab.visible = true
+		line.visible = true
+		lab.position = lp
+		line.clear_points()
+		line.add_point(sp)
+		line.add_point(lp + Vector2(0, 8))
+		line.default_color = Color(0.85, 0.75, 0.4, 0.55 * alpha)
+		placed.append(rect)
+
+
 func pick_body_at(screen_pos: Vector2) -> String:
 	if _cam == null or _vp == null:
 		return ""
@@ -613,7 +1041,6 @@ func pick_body_at(screen_pos: Vector2) -> String:
 	var dir := _cam.project_ray_normal(local)
 	var best_id := ""
 	var best_t := 1e30
-	# ~14 px pick floor in angular terms.
 	var px_ang := deg_to_rad(_cam.fov) / maxf(vp_size.y, 1.0)
 	var pick_ang := px_ang * 14.0
 	for id: String in _body_nodes.keys():
@@ -623,7 +1050,6 @@ func pick_body_at(screen_pos: Vector2) -> String:
 		var center: Vector3 = n.global_position
 		var R_scene: float = n.scale.x
 		var pick_R := maxf(R_scene, SCENE_REF * tan(pick_ang))
-		# Ray-sphere
 		var oc := from - center
 		var b := oc.dot(dir)
 		var c := oc.dot(oc) - pick_R * pick_R
@@ -635,7 +1061,6 @@ func pick_body_at(screen_pos: Vector2) -> String:
 			t = -b + sqrt(disc)
 		if t < 0.0:
 			continue
-		# Prefer larger angular size on near ties.
 		var ang := R_scene / maxf(t, 1e-3)
 		var score := t - ang * 50.0
 		if score < best_t:
@@ -740,8 +1165,6 @@ func format_hover_bbcode(id: String) -> String:
 		lines.append("[color=#9ecfff][i]Trivia[/i][/color]")
 		for t: Variant in trivia:
 			lines.append("• " + str(t))
-	elif str(b.get("source", "")) != "":
-		lines.append("Source: %s" % str(b.get("source", "")))
 	return "\n".join(lines)
 
 
@@ -792,11 +1215,11 @@ func _gui_input(ev: InputEvent) -> void:
 			accept_event()
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_dist = maxf(_dist / 1.2, 10.0)
-			_rebuild_orbits()
+			_force_orbit_rebuild()
 			accept_event()
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_dist = minf(_dist * 1.2, AU_KM * 500.0)
-			_rebuild_orbits()
+			_force_orbit_rebuild()
 			accept_event()
 	elif ev is InputEventMouseMotion:
 		var mm := ev as InputEventMouseMotion
@@ -808,7 +1231,6 @@ func _gui_input(ev: InputEvent) -> void:
 			_hide_hover()
 			accept_event()
 		else:
-			# Hide while the pointer is moving; show again after brief idle.
 			if mm.relative.length() > 0.5:
 				_moving_hide = true
 				_hover_idle_t = 0.12

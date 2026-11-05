@@ -27,6 +27,7 @@ declare -a ITEMS=(
   "uranus|uranus_map.jpg|https://www.solarsystemscope.com/textures/download/2k_uranus.jpg|Solar System Scope (CC BY 4.0)"
   "neptune|neptune_map.jpg|https://www.solarsystemscope.com/textures/download/2k_neptune.jpg|Solar System Scope (CC BY 4.0)"
   "io|io_map.jpg|https://astrogeology.usgs.gov/search/map/Io/Voyager/Io_Voyager_global_mosaic_512|USGS (placeholder URL — see SOURCES)"
+  "milkyway|stars_milky_way.jpg|https://www.solarsystemscope.com/textures/download/2k_stars_milky_way.jpg|Solar System Scope milky way / star field (CC BY 4.0)"
 )
 
 {
@@ -58,6 +59,45 @@ for item in "${ITEMS[@]}"; do
     rm -f "$dest.part"
     log "! failed $file — place a map at $dest by hand"
     echo "MISSING $file  ($credit)  $url" >> "$OUT/SOURCES.txt"
+    miss=$((miss+1))
+  fi
+done
+
+
+# Sky / galaxy textures (optional; SOLAR falls back to colored billboards + bundled star catalog)
+SKY_OUT="$OUT/sky"
+mkdir -p "$SKY_OUT"
+declare -a SKY_ITEMS=(
+  "m31|m31.jpg|https://upload.wikimedia.org/wikipedia/commons/thumb/9/98/Andromeda_Galaxy_%28with_h-alpha%29.jpg/1280px-Andromeda_Galaxy_%28with_h-alpha%29.jpg|Wikimedia Commons — Andromeda (credit on page)"
+  "m33|m33.jpg|https://upload.wikimedia.org/wikipedia/commons/thumb/6/64/Triangulum_Galaxy.jpg/1024px-Triangulum_Galaxy.jpg|Wikimedia Commons — Triangulum"
+  "lmc|lmc.jpg|https://upload.wikimedia.org/wikipedia/commons/thumb/4/49/LMC_Heic1311a.jpg/1280px-LMC_Heic1311a.jpg|ESA/Hubble — Large Magellanic Cloud"
+  "smc|smc.jpg|https://upload.wikimedia.org/wikipedia/commons/thumb/6/67/The_Small_Magellanic_Cloud.jpg/1280px-The_Small_Magellanic_Cloud.jpg|ESO — Small Magellanic Cloud"
+)
+{
+  echo
+  echo "Sky textures (Milky Way + nearby galaxies)"
+  echo "Milky Way panorama: Solar System Scope CC BY 4.0"
+  echo "Galaxy stills: see per-file credits (ESA/Hubble/ESO/Wikimedia). Prefer NASA/ESA originals when replacing."
+  echo "Bundled lightweight catalogs (no download needed): game/data/solar/sky_stars.json, sky_galaxies.json"
+  echo
+} >> "$OUT/SOURCES.txt"
+for item in "${SKY_ITEMS[@]}"; do
+  IFS='|' read -r id file url credit <<<"$item"
+  dest="$SKY_OUT/$file"
+  if [[ -f "$dest" && -s "$dest" ]]; then
+    log "have sky/$file"
+    ok=$((ok+1))
+    continue
+  fi
+  log "get sky/$file"
+  if curl -fL --connect-timeout 20 --max-time 180 -o "$dest.part" "$url"; then
+    mv "$dest.part" "$dest"
+    echo "sky/$file  $credit  $url" >> "$OUT/SOURCES.txt"
+    ok=$((ok+1))
+  else
+    rm -f "$dest.part"
+    log "! failed sky/$file — colored billboard fallback"
+    echo "MISSING sky/$file  ($credit)  $url" >> "$OUT/SOURCES.txt"
     miss=$((miss+1))
   fi
 done

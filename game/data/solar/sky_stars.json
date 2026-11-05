@@ -1,0 +1,1088 @@
+{
+ "version": 1,
+ "source": "Curated Yale Bright Star / Hipparcos bright-star subset (RA/Dec J2000, V mag, B-V).",
+ "frame": "equatorial_J2000",
+ "stars": [
+  {
+   "name": "Sirius",
+   "ra_h": 6.7525,
+   "dec_deg": -16.7161,
+   "mag": -1.46,
+   "bv": 0.0
+  },
+  {
+   "name": "Canopus",
+   "ra_h": 6.3992,
+   "dec_deg": -52.6957,
+   "mag": -0.74,
+   "bv": 0.15
+  },
+  {
+   "name": "Arcturus",
+   "ra_h": 14.261,
+   "dec_deg": 19.1824,
+   "mag": -0.05,
+   "bv": 1.23
+  },
+  {
+   "name": "Rigil Kentaurus",
+   "ra_h": 14.6601,
+   "dec_deg": -60.8356,
+   "mag": -0.27,
+   "bv": 0.71
+  },
+  {
+   "name": "Vega",
+   "ra_h": 18.6156,
+   "dec_deg": 38.7837,
+   "mag": 0.03,
+   "bv": 0.0
+  },
+  {
+   "name": "Capella",
+   "ra_h": 5.2782,
+   "dec_deg": 45.998,
+   "mag": 0.08,
+   "bv": 0.8
+  },
+  {
+   "name": "Rigel",
+   "ra_h": 5.2423,
+   "dec_deg": -8.2016,
+   "mag": 0.13,
+   "bv": -0.03
+  },
+  {
+   "name": "Procyon",
+   "ra_h": 7.655,
+   "dec_deg": 5.225,
+   "mag": 0.34,
+   "bv": 0.42
+  },
+  {
+   "name": "Betelgeuse",
+   "ra_h": 5.9195,
+   "dec_deg": 7.4071,
+   "mag": 0.5,
+   "bv": 1.85
+  },
+  {
+   "name": "Achernar",
+   "ra_h": 1.6286,
+   "dec_deg": -57.2368,
+   "mag": 0.46,
+   "bv": -0.19
+  },
+  {
+   "name": "Hadar",
+   "ra_h": 14.0637,
+   "dec_deg": -60.373,
+   "mag": 0.61,
+   "bv": -0.23
+  },
+  {
+   "name": "Altair",
+   "ra_h": 19.8464,
+   "dec_deg": 8.8683,
+   "mag": 0.77,
+   "bv": 0.22
+  },
+  {
+   "name": "Acrux",
+   "ra_h": 12.4433,
+   "dec_deg": -63.0991,
+   "mag": 0.77,
+   "bv": -0.24
+  },
+  {
+   "name": "Aldebaran",
+   "ra_h": 4.5987,
+   "dec_deg": 16.5093,
+   "mag": 0.85,
+   "bv": 1.54
+  },
+  {
+   "name": "Antares",
+   "ra_h": 16.4901,
+   "dec_deg": -26.4319,
+   "mag": 0.96,
+   "bv": 1.83
+  },
+  {
+   "name": "Spica",
+   "ra_h": 13.4199,
+   "dec_deg": -11.1613,
+   "mag": 0.97,
+   "bv": -0.23
+  },
+  {
+   "name": "Pollux",
+   "ra_h": 7.7553,
+   "dec_deg": 28.0262,
+   "mag": 1.14,
+   "bv": 1.0
+  },
+  {
+   "name": "Fomalhaut",
+   "ra_h": 22.9608,
+   "dec_deg": -29.6222,
+   "mag": 1.16,
+   "bv": 0.09
+  },
+  {
+   "name": "Deneb",
+   "ra_h": 20.6905,
+   "dec_deg": 45.2803,
+   "mag": 1.25,
+   "bv": 0.09
+  },
+  {
+   "name": "Mimosa",
+   "ra_h": 12.7954,
+   "dec_deg": -59.6888,
+   "mag": 1.25,
+   "bv": -0.23
+  },
+  {
+   "name": "Regulus",
+   "ra_h": 10.1395,
+   "dec_deg": 11.9672,
+   "mag": 1.35,
+   "bv": -0.11
+  },
+  {
+   "name": "Adhara",
+   "ra_h": 6.7229,
+   "dec_deg": -28.9721,
+   "mag": 1.5,
+   "bv": -0.21
+  },
+  {
+   "name": "Shaula",
+   "ra_h": 17.5601,
+   "dec_deg": -37.1038,
+   "mag": 1.62,
+   "bv": -0.22
+  },
+  {
+   "name": "Castor",
+   "ra_h": 7.5766,
+   "dec_deg": 31.8883,
+   "mag": 1.58,
+   "bv": 0.03
+  },
+  {
+   "name": "Gacrux",
+   "ra_h": 12.5194,
+   "dec_deg": -57.1132,
+   "mag": 1.63,
+   "bv": 1.59
+  },
+  {
+   "name": "Bellatrix",
+   "ra_h": 5.4188,
+   "dec_deg": 6.3497,
+   "mag": 1.64,
+   "bv": -0.22
+  },
+  {
+   "name": "Elnath",
+   "ra_h": 5.4382,
+   "dec_deg": 28.6075,
+   "mag": 1.65,
+   "bv": -0.13
+  },
+  {
+   "name": "Miaplacidus",
+   "ra_h": 9.22,
+   "dec_deg": -69.7172,
+   "mag": 1.7,
+   "bv": 0.0
+  },
+  {
+   "name": "Alnilam",
+   "ra_h": 5.6036,
+   "dec_deg": -1.2019,
+   "mag": 1.7,
+   "bv": -0.18
+  },
+  {
+   "name": "Alnair",
+   "ra_h": 22.1372,
+   "dec_deg": -46.961,
+   "mag": 1.74,
+   "bv": -0.13
+  },
+  {
+   "name": "Alioth",
+   "ra_h": 12.9004,
+   "dec_deg": 55.9598,
+   "mag": 1.77,
+   "bv": -0.02
+  },
+  {
+   "name": "Regor",
+   "ra_h": 8.1255,
+   "dec_deg": -47.3366,
+   "mag": 1.78,
+   "bv": -0.14
+  },
+  {
+   "name": "Dubhe",
+   "ra_h": 11.0621,
+   "dec_deg": 61.751,
+   "mag": 1.79,
+   "bv": 1.07
+  },
+  {
+   "name": "Mirfak",
+   "ra_h": 3.4054,
+   "dec_deg": 49.8612,
+   "mag": 1.8,
+   "bv": 0.48
+  },
+  {
+   "name": "Wezen",
+   "ra_h": 7.1399,
+   "dec_deg": -26.3932,
+   "mag": 1.84,
+   "bv": 0.68
+  },
+  {
+   "name": "Kaus Australis",
+   "ra_h": 18.4029,
+   "dec_deg": -34.3843,
+   "mag": 1.85,
+   "bv": -0.03
+  },
+  {
+   "name": "Avior",
+   "ra_h": 8.3752,
+   "dec_deg": -59.5095,
+   "mag": 1.86,
+   "bv": 1.0
+  },
+  {
+   "name": "Alkaid",
+   "ra_h": 13.7924,
+   "dec_deg": 49.3133,
+   "mag": 1.86,
+   "bv": -0.16
+  },
+  {
+   "name": "Menkalinan",
+   "ra_h": 5.992,
+   "dec_deg": 44.9474,
+   "mag": 1.9,
+   "bv": 0.0
+  },
+  {
+   "name": "Atria",
+   "ra_h": 16.8111,
+   "dec_deg": -69.0277,
+   "mag": 1.92,
+   "bv": 1.44
+  },
+  {
+   "name": "Alhena",
+   "ra_h": 6.6286,
+   "dec_deg": 16.3993,
+   "mag": 1.93,
+   "bv": 0.0
+  },
+  {
+   "name": "Peacock",
+   "ra_h": 20.4275,
+   "dec_deg": -56.7351,
+   "mag": 1.94,
+   "bv": -0.2
+  },
+  {
+   "name": "Alsephina",
+   "ra_h": 8.7411,
+   "dec_deg": -54.7086,
+   "mag": 1.96,
+   "bv": 0.04
+  },
+  {
+   "name": "Mirzam",
+   "ra_h": 6.3783,
+   "dec_deg": -17.9559,
+   "mag": 1.98,
+   "bv": -0.2
+  },
+  {
+   "name": "Alphard",
+   "ra_h": 9.4598,
+   "dec_deg": -8.6587,
+   "mag": 2.0,
+   "bv": 1.44
+  },
+  {
+   "name": "Polaris",
+   "ra_h": 2.5303,
+   "dec_deg": 89.2641,
+   "mag": 1.98,
+   "bv": 0.6
+  },
+  {
+   "name": "Hamal",
+   "ra_h": 2.1195,
+   "dec_deg": 23.4624,
+   "mag": 2.0,
+   "bv": 1.15
+  },
+  {
+   "name": "Algieba",
+   "ra_h": 10.3329,
+   "dec_deg": 19.8415,
+   "mag": 2.01,
+   "bv": 1.0
+  },
+  {
+   "name": "Diphda",
+   "ra_h": 0.7265,
+   "dec_deg": -17.9866,
+   "mag": 2.04,
+   "bv": 1.0
+  },
+  {
+   "name": "Nunki",
+   "ra_h": 18.9211,
+   "dec_deg": -26.2967,
+   "mag": 2.05,
+   "bv": -0.13
+  },
+  {
+   "name": "Menkent",
+   "ra_h": 14.1114,
+   "dec_deg": -36.3699,
+   "mag": 2.06,
+   "bv": 1.0
+  },
+  {
+   "name": "Alpheratz",
+   "ra_h": 0.1398,
+   "dec_deg": 29.0904,
+   "mag": 2.06,
+   "bv": -0.04
+  },
+  {
+   "name": "Mirach",
+   "ra_h": 1.1622,
+   "dec_deg": 35.6206,
+   "mag": 2.07,
+   "bv": 1.58
+  },
+  {
+   "name": "Saiph",
+   "ra_h": 5.7959,
+   "dec_deg": -9.6696,
+   "mag": 2.09,
+   "bv": -0.18
+  },
+  {
+   "name": "Kochab",
+   "ra_h": 14.8451,
+   "dec_deg": 74.1555,
+   "mag": 2.08,
+   "bv": 1.4
+  },
+  {
+   "name": "Rasalhague",
+   "ra_h": 17.5822,
+   "dec_deg": 12.56,
+   "mag": 2.08,
+   "bv": 0.15
+  },
+  {
+   "name": "Algol",
+   "ra_h": 3.1361,
+   "dec_deg": 40.9556,
+   "mag": 2.12,
+   "bv": -0.05
+  },
+  {
+   "name": "Almach",
+   "ra_h": 2.0649,
+   "dec_deg": 42.3297,
+   "mag": 2.1,
+   "bv": 1.0
+  },
+  {
+   "name": "Denebola",
+   "ra_h": 11.8177,
+   "dec_deg": 14.5721,
+   "mag": 2.14,
+   "bv": 0.09
+  },
+  {
+   "name": "Suhail",
+   "ra_h": 9.133,
+   "dec_deg": -43.4326,
+   "mag": 2.21,
+   "bv": 1.0
+  },
+  {
+   "name": "Alphecca",
+   "ra_h": 15.5781,
+   "dec_deg": 26.7149,
+   "mag": 2.23,
+   "bv": -0.02
+  },
+  {
+   "name": "Eltanin",
+   "ra_h": 17.9434,
+   "dec_deg": 51.4889,
+   "mag": 2.24,
+   "bv": 1.52
+  },
+  {
+   "name": "Schedar",
+   "ra_h": 0.6751,
+   "dec_deg": 56.5373,
+   "mag": 2.24,
+   "bv": 1.17
+  },
+  {
+   "name": "Caph",
+   "ra_h": 0.1529,
+   "dec_deg": 59.1498,
+   "mag": 2.28,
+   "bv": 0.34
+  },
+  {
+   "name": "Merak",
+   "ra_h": 11.0307,
+   "dec_deg": 56.3824,
+   "mag": 2.37,
+   "bv": -0.02
+  },
+  {
+   "name": "Izar",
+   "ra_h": 14.7498,
+   "dec_deg": 27.0742,
+   "mag": 2.37,
+   "bv": 0.0
+  },
+  {
+   "name": "Enif",
+   "ra_h": 21.7364,
+   "dec_deg": 9.875,
+   "mag": 2.38,
+   "bv": 1.52
+  },
+  {
+   "name": "Ankaa",
+   "ra_h": 0.438,
+   "dec_deg": -42.305,
+   "mag": 2.4,
+   "bv": 1.0
+  },
+  {
+   "name": "Alderamin",
+   "ra_h": 21.3096,
+   "dec_deg": 62.5856,
+   "mag": 2.45,
+   "bv": 0.21
+  },
+  {
+   "name": "Ruchbah",
+   "ra_h": 1.4302,
+   "dec_deg": 60.2353,
+   "mag": 2.47,
+   "bv": -0.06
+  },
+  {
+   "name": "Markab",
+   "ra_h": 23.0793,
+   "dec_deg": 15.2053,
+   "mag": 2.49,
+   "bv": -0.04
+  },
+  {
+   "name": "Scheat",
+   "ra_h": 23.0629,
+   "dec_deg": 28.0828,
+   "mag": 2.44,
+   "bv": 1.65
+  },
+  {
+   "name": "Naos",
+   "ra_h": 8.059,
+   "dec_deg": -24.3044,
+   "mag": 2.25,
+   "bv": -0.25
+  },
+  {
+   "name": "Mintaka",
+   "ra_h": 5.5334,
+   "dec_deg": -0.2991,
+   "mag": 2.23,
+   "bv": -0.18
+  },
+  {
+   "name": "Alnitak",
+   "ra_h": 5.6793,
+   "dec_deg": -1.9426,
+   "mag": 1.77,
+   "bv": -0.2
+  },
+  {
+   "name": "Meissa",
+   "ra_h": 5.5851,
+   "dec_deg": 9.9342,
+   "mag": 3.39,
+   "bv": -0.18
+  },
+  {
+   "name": "Phact",
+   "ra_h": 5.6608,
+   "dec_deg": -34.0741,
+   "mag": 2.65,
+   "bv": -0.12
+  },
+  {
+   "name": "Gienah Corvi",
+   "ra_h": 12.8754,
+   "dec_deg": -17.5426,
+   "mag": 2.59,
+   "bv": -0.09
+  },
+  {
+   "name": "Phecda",
+   "ra_h": 11.8972,
+   "dec_deg": 53.6948,
+   "mag": 2.44,
+   "bv": -0.05
+  },
+  {
+   "name": "Megrez",
+   "ra_h": 12.2571,
+   "dec_deg": 57.0326,
+   "mag": 3.31,
+   "bv": -0.04
+  },
+  {
+   "name": "Mizar",
+   "ra_h": 13.3987,
+   "dec_deg": 54.9254,
+   "mag": 2.23,
+   "bv": 0.06
+  },
+  {
+   "name": "Alcor",
+   "ra_h": 13.4207,
+   "dec_deg": 54.9879,
+   "mag": 3.99,
+   "bv": 0.0
+  },
+  {
+   "name": "Thuban",
+   "ra_h": 14.0732,
+   "dec_deg": 64.3758,
+   "mag": 3.67,
+   "bv": -0.05
+  },
+  {
+   "name": "Unukalhai",
+   "ra_h": 15.7377,
+   "dec_deg": 6.4256,
+   "mag": 2.63,
+   "bv": 1.17
+  },
+  {
+   "name": "Zubeneschamali",
+   "ra_h": 15.2835,
+   "dec_deg": -9.3829,
+   "mag": 2.61,
+   "bv": -0.11
+  },
+  {
+   "name": "Zubenelgenubi",
+   "ra_h": 14.8479,
+   "dec_deg": -16.0419,
+   "mag": 2.75,
+   "bv": -0.1
+  },
+  {
+   "name": "Kaus Media",
+   "ra_h": 18.4582,
+   "dec_deg": -25.4217,
+   "mag": 2.72,
+   "bv": 0.0
+  },
+  {
+   "name": "Kaus Borealis",
+   "ra_h": 18.466,
+   "dec_deg": -25.421,
+   "mag": 2.81,
+   "bv": 0.0
+  },
+  {
+   "name": "Ascella",
+   "ra_h": 19.1589,
+   "dec_deg": -29.8801,
+   "mag": 2.6,
+   "bv": 0.0
+  },
+  {
+   "name": "Albireo",
+   "ra_h": 19.512,
+   "dec_deg": 27.9597,
+   "mag": 3.05,
+   "bv": 1.0
+  },
+  {
+   "name": "Tarazed",
+   "ra_h": 19.7703,
+   "dec_deg": 10.6133,
+   "mag": 2.72,
+   "bv": 1.52
+  },
+  {
+   "name": "Alshain",
+   "ra_h": 19.921,
+   "dec_deg": 6.4068,
+   "mag": 3.71,
+   "bv": 0.0
+  },
+  {
+   "name": "Sadr",
+   "ra_h": 20.3705,
+   "dec_deg": 40.2567,
+   "mag": 2.23,
+   "bv": 0.0
+  },
+  {
+   "name": "Gienah Cyg",
+   "ra_h": 20.7701,
+   "dec_deg": 33.9703,
+   "mag": 2.48,
+   "bv": -0.1
+  },
+  {
+   "name": "Delta Cyg",
+   "ra_h": 19.7494,
+   "dec_deg": 45.1308,
+   "mag": 2.87,
+   "bv": 0.0
+  },
+  {
+   "name": "Lesath",
+   "ra_h": 17.621,
+   "dec_deg": -37.2958,
+   "mag": 2.7,
+   "bv": -0.18
+  },
+  {
+   "name": "Sargas",
+   "ra_h": 17.6217,
+   "dec_deg": -42.9978,
+   "mag": 1.86,
+   "bv": 0.4
+  },
+  {
+   "name": "Cebalrai",
+   "ra_h": 17.7246,
+   "dec_deg": 4.5671,
+   "mag": 2.76,
+   "bv": 1.0
+  },
+  {
+   "name": "Sabik",
+   "ra_h": 17.172,
+   "dec_deg": -15.7245,
+   "mag": 2.43,
+   "bv": 0.0
+  },
+  {
+   "name": "Yed Prior",
+   "ra_h": 16.2391,
+   "dec_deg": -3.6943,
+   "mag": 2.74,
+   "bv": 1.0
+  },
+  {
+   "name": "Kornephoros",
+   "ra_h": 16.5076,
+   "dec_deg": 21.4896,
+   "mag": 2.77,
+   "bv": 0.0
+  },
+  {
+   "name": "Sheratan",
+   "ra_h": 1.9107,
+   "dec_deg": 20.808,
+   "mag": 2.64,
+   "bv": -0.05
+  },
+  {
+   "name": "Menkar",
+   "ra_h": 3.0379,
+   "dec_deg": 4.0897,
+   "mag": 2.53,
+   "bv": 1.0
+  },
+  {
+   "name": "Alcyone",
+   "ra_h": 3.7914,
+   "dec_deg": 24.1051,
+   "mag": 2.87,
+   "bv": -0.09
+  },
+  {
+   "name": "Atlas",
+   "ra_h": 3.8194,
+   "dec_deg": 24.0534,
+   "mag": 3.63,
+   "bv": 0.0
+  },
+  {
+   "name": "Electra",
+   "ra_h": 3.7408,
+   "dec_deg": 24.1133,
+   "mag": 3.7,
+   "bv": 0.0
+  },
+  {
+   "name": "Maia",
+   "ra_h": 3.7583,
+   "dec_deg": 24.3678,
+   "mag": 3.87,
+   "bv": 0.0
+  },
+  {
+   "name": "Merope",
+   "ra_h": 3.7703,
+   "dec_deg": 23.9483,
+   "mag": 4.18,
+   "bv": 0.0
+  },
+  {
+   "name": "Cursa",
+   "ra_h": 5.1308,
+   "dec_deg": -5.0863,
+   "mag": 2.78,
+   "bv": -0.1
+  },
+  {
+   "name": "Hassaleh",
+   "ra_h": 4.9499,
+   "dec_deg": 33.1664,
+   "mag": 2.69,
+   "bv": 0.0
+  },
+  {
+   "name": "Acamar",
+   "ra_h": 2.971,
+   "dec_deg": -40.3047,
+   "mag": 2.88,
+   "bv": 0.0
+  },
+  {
+   "name": "Sheliak",
+   "ra_h": 18.8347,
+   "dec_deg": 33.3627,
+   "mag": 3.52,
+   "bv": 0.0
+  },
+  {
+   "name": "Sulafat",
+   "ra_h": 18.9824,
+   "dec_deg": 32.6896,
+   "mag": 3.25,
+   "bv": 0.0
+  },
+  {
+   "name": "Delta Crucis",
+   "ra_h": 12.2512,
+   "dec_deg": -58.7489,
+   "mag": 2.79,
+   "bv": -0.13
+  },
+  {
+   "name": "Algenib",
+   "ra_h": 0.2206,
+   "dec_deg": 15.1836,
+   "mag": 2.83,
+   "bv": -0.09
+  },
+  {
+   "name": "Toliman",
+   "ra_h": 14.66,
+   "dec_deg": -60.84,
+   "mag": 1.33,
+   "bv": 0.9
+  },
+  {
+   "name": "Zaurak",
+   "ra_h": 3.9672,
+   "dec_deg": -13.5085,
+   "mag": 2.95,
+   "bv": 0.0
+  },
+  {
+   "name": "Rana",
+   "ra_h": 3.7208,
+   "dec_deg": -9.7634,
+   "mag": 3.52,
+   "bv": 0.0
+  }
+ ],
+ "constellations": [
+  {
+   "name": "Orion",
+   "edges": [
+    [
+     "Betelgeuse",
+     "Bellatrix"
+    ],
+    [
+     "Bellatrix",
+     "Mintaka"
+    ],
+    [
+     "Mintaka",
+     "Alnilam"
+    ],
+    [
+     "Alnilam",
+     "Alnitak"
+    ],
+    [
+     "Alnitak",
+     "Saiph"
+    ],
+    [
+     "Saiph",
+     "Rigel"
+    ],
+    [
+     "Rigel",
+     "Mintaka"
+    ],
+    [
+     "Betelgeuse",
+     "Meissa"
+    ],
+    [
+     "Bellatrix",
+     "Meissa"
+    ]
+   ]
+  },
+  {
+   "name": "Ursa Major",
+   "edges": [
+    [
+     "Dubhe",
+     "Merak"
+    ],
+    [
+     "Merak",
+     "Phecda"
+    ],
+    [
+     "Phecda",
+     "Megrez"
+    ],
+    [
+     "Megrez",
+     "Alioth"
+    ],
+    [
+     "Alioth",
+     "Mizar"
+    ],
+    [
+     "Mizar",
+     "Alkaid"
+    ],
+    [
+     "Megrez",
+     "Dubhe"
+    ]
+   ]
+  },
+  {
+   "name": "Cassiopeia",
+   "edges": [
+    [
+     "Caph",
+     "Schedar"
+    ],
+    [
+     "Schedar",
+     "Ruchbah"
+    ]
+   ]
+  },
+  {
+   "name": "Summer Triangle",
+   "edges": [
+    [
+     "Vega",
+     "Deneb"
+    ],
+    [
+     "Deneb",
+     "Altair"
+    ],
+    [
+     "Altair",
+     "Vega"
+    ]
+   ]
+  },
+  {
+   "name": "Crux",
+   "edges": [
+    [
+     "Acrux",
+     "Mimosa"
+    ],
+    [
+     "Mimosa",
+     "Gacrux"
+    ],
+    [
+     "Gacrux",
+     "Delta Crucis"
+    ],
+    [
+     "Delta Crucis",
+     "Acrux"
+    ]
+   ]
+  },
+  {
+   "name": "Leo",
+   "edges": [
+    [
+     "Regulus",
+     "Algieba"
+    ],
+    [
+     "Algieba",
+     "Denebola"
+    ]
+   ]
+  },
+  {
+   "name": "Scorpius",
+   "edges": [
+    [
+     "Antares",
+     "Shaula"
+    ],
+    [
+     "Shaula",
+     "Lesath"
+    ],
+    [
+     "Antares",
+     "Sargas"
+    ]
+   ]
+  },
+  {
+   "name": "Cygnus",
+   "edges": [
+    [
+     "Deneb",
+     "Sadr"
+    ],
+    [
+     "Sadr",
+     "Gienah Cyg"
+    ],
+    [
+     "Sadr",
+     "Albireo"
+    ],
+    [
+     "Deneb",
+     "Delta Cyg"
+    ]
+   ]
+  },
+  {
+   "name": "Pegasus",
+   "edges": [
+    [
+     "Markab",
+     "Scheat"
+    ],
+    [
+     "Scheat",
+     "Alpheratz"
+    ],
+    [
+     "Alpheratz",
+     "Algenib"
+    ],
+    [
+     "Algenib",
+     "Markab"
+    ]
+   ]
+  },
+  {
+   "name": "Taurus",
+   "edges": [
+    [
+     "Aldebaran",
+     "Elnath"
+    ],
+    [
+     "Aldebaran",
+     "Alcyone"
+    ]
+   ]
+  },
+  {
+   "name": "Gemini",
+   "edges": [
+    [
+     "Castor",
+     "Pollux"
+    ],
+    [
+     "Pollux",
+     "Alhena"
+    ]
+   ]
+  },
+  {
+   "name": "Aquila",
+   "edges": [
+    [
+     "Altair",
+     "Tarazed"
+    ],
+    [
+     "Altair",
+     "Alshain"
+    ]
+   ]
+  },
+  {
+   "name": "Lyra",
+   "edges": [
+    [
+     "Vega",
+     "Sheliak"
+    ],
+    [
+     "Vega",
+     "Sulafat"
+    ],
+    [
+     "Sheliak",
+     "Sulafat"
+    ]
+   ]
+  }
+ ]
+}

@@ -1,0 +1,199 @@
+{
+ "version": 1,
+ "source": "Nearby galaxies \u2014 NED/SIMBAD consensus positions and angular sizes.",
+ "frame": "equatorial_J2000",
+ "galaxies": [
+  {
+   "id": "m31",
+   "name": "Andromeda (M31)",
+   "ra_h": 0.7122,
+   "dec_deg": 41.2692,
+   "ang_maj_deg": 3.167,
+   "ang_min_deg": 1.0,
+   "pa_deg": 35.0,
+   "mag": 3.4,
+   "texture": "m31.jpg",
+   "color": [
+    0.7,
+    0.75,
+    0.9
+   ]
+  },
+  {
+   "id": "m33",
+   "name": "Triangulum (M33)",
+   "ra_h": 1.5647,
+   "dec_deg": 30.6602,
+   "ang_maj_deg": 0.95,
+   "ang_min_deg": 0.6,
+   "pa_deg": 23.0,
+   "mag": 5.7,
+   "texture": "m33.jpg",
+   "color": [
+    0.65,
+    0.7,
+    0.85
+   ]
+  },
+  {
+   "id": "lmc",
+   "name": "Large Magellanic Cloud",
+   "ra_h": 5.392,
+   "dec_deg": -69.756,
+   "ang_maj_deg": 10.75,
+   "ang_min_deg": 9.2,
+   "pa_deg": 170.0,
+   "mag": 0.4,
+   "texture": "lmc.jpg",
+   "color": [
+    0.85,
+    0.75,
+    0.7
+   ]
+  },
+  {
+   "id": "smc",
+   "name": "Small Magellanic Cloud",
+   "ra_h": 0.881,
+   "dec_deg": -72.8,
+   "ang_maj_deg": 5.0,
+   "ang_min_deg": 3.0,
+   "pa_deg": 45.0,
+   "mag": 2.2,
+   "texture": "smc.jpg",
+   "color": [
+    0.8,
+    0.78,
+    0.85
+   ]
+  },
+  {
+   "id": "m81",
+   "name": "Bode's Galaxy (M81)",
+   "ra_h": 9.926,
+   "dec_deg": 69.065,
+   "ang_maj_deg": 0.45,
+   "ang_min_deg": 0.25,
+   "pa_deg": 157.0,
+   "mag": 6.9,
+   "texture": "m81.jpg",
+   "color": [
+    0.7,
+    0.72,
+    0.8
+   ]
+  },
+  {
+   "id": "m82",
+   "name": "Cigar Galaxy (M82)",
+   "ra_h": 9.931,
+   "dec_deg": 69.679,
+   "ang_maj_deg": 0.19,
+   "ang_min_deg": 0.07,
+   "pa_deg": 65.0,
+   "mag": 8.4,
+   "texture": "m82.jpg",
+   "color": [
+    0.85,
+    0.6,
+    0.5
+   ]
+  },
+  {
+   "id": "m51",
+   "name": "Whirlpool (M51)",
+   "ra_h": 13.498,
+   "dec_deg": 47.195,
+   "ang_maj_deg": 0.19,
+   "ang_min_deg": 0.15,
+   "pa_deg": 0.0,
+   "mag": 8.4,
+   "texture": "m51.jpg",
+   "color": [
+    0.7,
+    0.75,
+    0.9
+   ]
+  },
+  {
+   "id": "m101",
+   "name": "Pinwheel (M101)",
+   "ra_h": 14.053,
+   "dec_deg": 54.349,
+   "ang_maj_deg": 0.48,
+   "ang_min_deg": 0.45,
+   "pa_deg": 0.0,
+   "mag": 7.9,
+   "texture": "m101.jpg",
+   "color": [
+    0.7,
+    0.75,
+    0.85
+   ]
+  },
+  {
+   "id": "m87",
+   "name": "Virgo A (M87)",
+   "ra_h": 12.513,
+   "dec_deg": 12.391,
+   "ang_maj_deg": 0.12,
+   "ang_min_deg": 0.1,
+   "pa_deg": 0.0,
+   "mag": 8.6,
+   "texture": "m87.jpg",
+   "color": [
+    0.75,
+    0.75,
+    0.8
+   ]
+  },
+  {
+   "id": "m104",
+   "name": "Sombrero (M104)",
+   "ra_h": 12.666,
+   "dec_deg": -11.623,
+   "ang_maj_deg": 0.15,
+   "ang_min_deg": 0.06,
+   "pa_deg": 90.0,
+   "mag": 8.0,
+   "texture": "m104.jpg",
+   "color": [
+    0.8,
+    0.75,
+    0.7
+   ]
+  },
+  {
+   "id": "ngc253",
+   "name": "Sculptor Galaxy",
+   "ra_h": 0.792,
+   "dec_deg": -25.288,
+   "ang_maj_deg": 0.46,
+   "ang_min_deg": 0.12,
+   "pa_deg": 52.0,
+   "mag": 7.2,
+   "texture": "ngc253.jpg",
+   "color": [
+    0.75,
+    0.7,
+    0.65
+   ]
+  },
+  {
+   "id": "ngc5128",
+   "name": "Centaurus A",
+   "ra_h": 13.424,
+   "dec_deg": -43.019,
+   "ang_maj_deg": 0.43,
+   "ang_min_deg": 0.33,
+   "pa_deg": 30.0,
+   "mag": 6.8,
+   "texture": "cenA.jpg",
+   "color": [
+    0.8,
+    0.7,
+    0.6
+   ]
+  }
+ ]
+}

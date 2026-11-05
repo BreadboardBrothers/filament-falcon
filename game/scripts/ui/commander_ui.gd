@@ -1733,20 +1733,28 @@ func _build_solar(page: Control) -> void:
 		["PLANET ORBITS", func() -> bool: return sv.show_planet_orbits, func(v: bool) -> void: sv.show_planet_orbits = v],
 		["MOON ORBITS", func() -> bool: return sv.show_moon_orbits, func(v: bool) -> void: sv.show_moon_orbits = v],
 		["MOONS", func() -> bool: return sv.show_moons, func(v: bool) -> void: sv.show_moons = v],
+		["LABELS", func() -> bool: return sv.show_labels, func(v: bool) -> void: sv.show_labels = v],
+		["MOON LABELS", func() -> bool: return sv.show_moon_labels, func(v: bool) -> void: sv.show_moon_labels = v],
+		["SKY", func() -> bool: return sv.show_sky, func(v: bool) -> void: sv.show_sky = v],
+		["CONSTELLATIONS", func() -> bool: return sv.show_constellations, func(v: bool) -> void: sv.show_constellations = v],
+		["GALAXIES", func() -> bool: return sv.show_galaxies, func(v: bool) -> void: sv.show_galaxies = v],
 		["SHIP PATH", func() -> bool: return sv.show_ship_path, func(v: bool) -> void: sv.show_ship_path = v],
 		["EXAG. SIZE", func() -> bool: return sv.exaggerated, func(v: bool) -> void: sv.exaggerated = v],
+		["EXAG. SUN", func() -> bool: return sv.exaggerated_sun, func(v: bool) -> void: sv.exaggerated_sun = v],
 	]:
 		var title: String = spec[0]
 		var getter: Callable = spec[1]
 		var setter: Callable = spec[2]
 		var bb := button(title, func() -> void:
 			setter.call(not bool(getter.call()))
-			sv._rebuild_orbits()
-			if title in ["MOONS", "EXAG. SIZE"]:
-				sv._build_bodies(), 13, 36)
+			sv._force_orbit_rebuild()
+			if title in ["MOONS", "EXAG. SIZE", "EXAG. SUN"]:
+				sv._build_bodies()
+			if title in ["SKY", "CONSTELLATIONS", "GALAXIES"]:
+				sv._apply_sky_visibility(), 13, 36)
 		tg.add_child(bb)
 		live["solar_t_" + title] = func() -> void: bb.modulate = C_GREEN if getter.call() else Color.WHITE
-	side.add_child(label("EXAG. SIZE is off by default (true scale). Turn it on to see planet discs at AU ranges.", 14, C_DIM))
+	side.add_child(label("EXAG. SIZE = planets/moons/dwarfs (moons & their orbits scale out of the planet). EXAG. SUN is separate and capped below Mercury's orbit. SHIP PATH off by default.", 14, C_DIM))
 	# warp buttons
 	side.add_child(label("WARP TO", 16, C_DIM, false))
 	var wg := grid(side, 4, 6)

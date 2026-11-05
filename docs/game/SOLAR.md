@@ -3,55 +3,50 @@
 True-scale solar-system visualizer on **Commander → SOLAR**. Offline by default (bundled Keplerian elements); optional NASA / Solar System Scope textures downloaded on the game PC.
 
 ## What you get
-- Sun + 8 planets + 5 dwarf planets (Pluto, Ceres, Eris, Haumea, Makemake) and **~460 moons** from JPL SSD mean elements (Earth→Pluto; irregulars included). Bundled catalog ships the full set; re-run the fetch script on the game PC to refresh.
-- Planet positions from JPL approximate Keplerian elements with century rates (`ssd.jpl.nasa.gov/planets/approx_pos.html`). Moons from [Planetary Satellite Mean Elements](https://ssd.jpl.nasa.gov/sats/elem/) (+ radii/GM from [phys_par](https://ssd.jpl.nasa.gov/sats/phys_par/) when published).
-- **True scale** by default (planet discs are tiny at AU ranges). Toggle **EXAG. SIZE** (clearly labeled) to inflate radii for overview.
-- **Floating origin + scene-unit scaling + distant impostors**: camera sits at a fixed scene distance while km positions are scaled; bodies beyond the local horizon are pulled in along the line of sight with angular size preserved so they never pop from depth precision. Near/far clip planes are derived from camera distance (and nearest surface) with a capped far/near ratio.
-- **Hover fact card** (ray pick with a generous radius for tiny bodies): name, type, sidereal/solar day, year, diameter & size vs Earth, mass/gravity/density, distance from Sun (AU, km, light-time), axial tilt, mean temperature, moon count, atmosphere, escape velocity, discovery, trivia, current orbital speed. Hides while the pointer is moving.
-- **Warp / attach**: frames the body so its diameter fills ~half the vertical FOV, approached from the **Sun-facing (lit) hemisphere** — not centered inside the body. Attach keeps that framing as the body moves.
-- Time: scrubber ±50 years, **NOW**, UTC clock, rates from pause / real-time through 100 yr/s and reverse.
-- Orbit lines (global / planets / moons), WASD+QE move, RMB look, wheel zoom, AUTO/SLOW/MED/FAST/AU/s camera speed.
-- Ship marker + predicted trajectory (Sun+planets on rails, RK4 n-body) with span 1 d / 7 d / 30 d / 1 y.
+- Sun + 8 planets + 5 dwarf planets and **~460 moons** (JPL SSD mean elements).
+- **True scale** by default. **EXAG. SIZE** inflates planets, dwarfs, **and moons** (moon orbital radii scale so moons sit outside the exaggerated planet). **EXAG. SUN** is a **separate** toggle (default off), capped so the Sun never reaches Mercury’s orbit.
+- **LABELS** / **MOON LABELS**: screen-space name tags with short leader lines, decluttered and distance-faded.
+- **SKY** / **GALAXIES** / **CONSTELLATIONS**: Milky Way panorama (when fetched), bright-star field from a bundled Yale/Hipparcos subset (correct RA/Dec → ecliptic), optional constellation stick figures, nearby galaxies (M31, M33, LMC, SMC, …) at correct sky positions/sizes.
+- Floating origin + scene-unit scaling + distant impostors; dynamic near/far clips.
+- Hover fact card (ray pick). Warp/attach frames ~half screen from the lit side.
+- **Orbit lines update with time**: planet polylines resample as JD changes; moon orbits are drawn relative to the parent’s **current** position so they travel with the planet. Bodies stay on their lines.
+- **SHIP PATH** default **off** (the old orange/yellow trajectory + tall ticks looked like “yellow lines from Earth”).
+
+## Yellow lines (fixed)
+**Root cause:** `_update_ship()` drew the predicted ship trajectory in orange (`Color(1.0, 0.55, 0.15)`) plus long vertical yellow tick marks (`Color(1.0, 0.8, 0.3)`) from the geocentric ship state near Earth, and `show_ship_path` defaulted to **true**.  
+**Fix:** default off; short cyan ticks; enable only via **SHIP PATH**.
 
 ## Accuracy limits
 | Class | Typical error | Notes |
 |-------|---------------|-------|
-| Planets (decades around J2000) | ~1e-3 AU | JPL approx elements; no perturbations |
-| Earth's Moon | hundreds of km | Simple Keplerian, not DE440 |
-| Moons (JPL SSD mean elements) | schematic vs Horizons | Mean precessing ellipses — not for precise ephemerides; good for the visualizer |
-| Tiny irregulars without phys_par radius | radius ≈ 1.5 km placeholder | Orbital elements still from JPL; refresh phys_par when published |
-| Ship path | sketch | Bodies on rails; no SRP / drag / burns |
-| Fact card numbers | consensus / fact-sheet | `facts.json` — not a live Horizons query |
+| Planets (decades around J2000) | ~1e-3 AU | JPL approx elements |
+| Earth's Moon | hundreds of km | Simple Keplerian |
+| Moons (JPL SSD mean elements) | schematic vs Horizons | Visualizer quality |
+| Sky stars / galaxies | catalog positions | Bundled subset; textures optional |
+| Ship path | sketch | Bodies on rails |
 
-Valid UI range: roughly J2000 ± 50 years (scrubber). Elements remain usable further out but drift.
-
-## Textures (Yves's PC)
+## Assets (Yves’s PC)
 ```
 game/tools/fetch_solar_assets.sh
-# or as part of:
-game/tools/fetch_assets.sh
+# or: game/tools/fetch_assets.sh
 ```
-Writes under `~/.local/share/filament-falcon/assets/solar/` (Sun/planets/Moon 2K maps from [Solar System Scope](https://www.solarsystemscope.com/textures/), CC BY 4.0). `SOURCES.txt` lists credits. Drop NASA / USGS / JPL public-domain maps in the same folder using the same filenames (`earth_map.jpg`, `mars_normal.jpg`, …). Without textures the page uses procedural colors.
+Downloads into `~/.local/share/filament-falcon/assets/solar/`:
+- Planet/Sun/Moon maps (Solar System Scope CC BY 4.0)
+- `stars_milky_way.jpg` (SSS milky-way / starfield)
+- `sky/*.jpg` galaxy stills (ESA/Hubble/ESO/Wikimedia — see `SOURCES.txt`)
+- Optional JPL moon overlay via `build_moon_catalog.py`
 
-Moon catalog refresh (on the game PC; network, ~700 KB HTML cached under `~/.local/share/filament-falcon/cache/jpl/`):
-```
-python3 game/tools/build_moon_catalog.py
-# also writes ~/.local/share/filament-falcon/assets/solar/moons_full.json (runtime overlay)
-python3 game/tools/build_moon_catalog.py --update-catalog   # rewrite game/data/solar/catalog.json
-python3 game/tools/test_build_moon_catalog.py               # offline parser self-test
-```
-Source is the HTML tables at `ssd.jpl.nasa.gov/sats/elem/` (there is **no** JSON `satelm.api`). Failures print HTTP status and the first response bytes. Offline / failure keeps the bundled catalog.
+Bundled (no download): `game/data/solar/sky_stars.json`, `sky_galaxies.json`, `facts.json`, `catalog.json`.
 
 ## Headless check
 ```
 XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --solar-test
+XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --ui-fit
 ```
-Checks: catalog load, moon count ≥ 290 (bundled ~460 after JPL refresh), Earth ≈ 1 AU at J2000 and 2024-01-01, Moon distance, Jupiter distance, finite ship trajectory, SolarView smoke, **clip planes across zoom**, half-screen lit-side warp / attach framing, facts dataset + hover text.
+`--solar-test` covers ephemeris, clips, half-screen warp, separate Sun exag + moon orbit exag, body-on-orbit across scrubbed times, parent-attached moon orbits, sky catalogs, ship-path default.
 
 ## Files
-- `game/data/solar/catalog.json` — bodies + moons
-- `game/data/solar/facts.json` — hover fact cards (planets, dwarfs, Sun, major moons)
-- `game/scripts/solar/ephemeris.gd` — Kepler + propagate
-- `game/scripts/ui/solar_view.gd` — SubViewport scene (clips, impostors, hover, warp)
+- `game/data/solar/catalog.json`, `facts.json`, `sky_stars.json`, `sky_galaxies.json`
+- `game/scripts/solar/ephemeris.gd`, `game/scripts/ui/solar_view.gd`
 - `game/shaders/solar/body.gdshader`, `ring.gdshader`
 - `game/tools/fetch_solar_assets.sh`, `build_moon_catalog.py`
