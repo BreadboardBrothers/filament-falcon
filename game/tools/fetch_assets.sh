@@ -171,6 +171,11 @@ if [ "$HAVE_PY" = 1 ]; then
   # AREAS map roads / rivers / lakes / town names from every cached Geofabrik extract (needs pyosmium)
   python3 tools/map_layer.py || echo "  ! map layer skipped (pip install osmium; the AREAS map works without it)"
 fi
+# SOLAR page textures + optional moon-catalog refresh (large; skips existing files)
+if [ -x tools/fetch_solar_assets.sh ]; then
+  echo "SOLAR textures (Solar System Scope / NASA maps)..."
+  tools/fetch_solar_assets.sh || echo "  ! solar assets skipped (re-run tools/fetch_solar_assets.sh on the game PC)"
+fi
 [ "$FAIL" = 0 ] && touch "$A/.fetched"
 du -sh "$A" 2>/dev/null
 echo "Done$( [ "$FAIL" = 1 ] && echo " (some items failed; re-run tools/fetch_assets.sh when online)")."

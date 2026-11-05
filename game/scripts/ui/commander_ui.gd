@@ -19,13 +19,15 @@ extends FalconPanel
 ##   AREAS            real-Earth area manager: pick a preset, lat/lon + radius or a box on the
 ##                    map, see download sizes, queue DEM / imagery / OSM / 3D-build jobs (run on
 ##                    this PC by tools/area_manager.py), progress, cancel, delete, cache use.
+##   SOLAR            solar-system visualizer: true-scale planets + moons, time scrub, orbits,
+##                    warp/attach, ship trajectory (scripts/ui/solar_view.gd).
 ##   SETUP            which screen is which (4 roles), headsets, virtual panels, layout
 ##                    mode, quality, FPS cap, vsync.
 ## Top bar: board status (PILOT / OPS / CMD: plugged in or VIRTUAL), crew position (pod and
 ## seats, from the read-only senses) and intercom state.
 ## On a 3-screen rig this whole UI is a tab on the kids' console (Escape toggles it).
 
-const PAGES := ["MISSIONS", "MISSION CONTROL", "BRIEFING", "TRAINING", "CONTROLS", "PANEL", "ICS", "EVA", "AREAS", "SETUP"]
+const PAGES := ["MISSIONS", "MISSION CONTROL", "BRIEFING", "TRAINING", "CONTROLS", "PANEL", "ICS", "EVA", "AREAS", "SOLAR", "SETUP"]
 const SEAT_COL := {"pilot": FalconPanel.C_PILOT, "ops": FalconPanel.C_OPS, "commander": FalconPanel.C_AMBER, "eva": Color(1.0, 0.85, 0.4)}
 const C_EVA := Color(1.0, 0.85, 0.4)
 
@@ -105,6 +107,7 @@ func _ready() -> void:
 	_build_ics(pages["ICS"])
 	_build_eva(pages["EVA"])
 	_build_areas(pages["AREAS"])
+	_build_solar(pages["SOLAR"])
 	_build_setup(pages["SETUP"])
 	show_page("MISSIONS")
 
@@ -1655,6 +1658,136 @@ func _area_runner_view(js: Dictionary, areas: Array) -> void:
 
 static func _unix_now() -> float:
 	return Time.get_unix_time_from_system()
+
+
+
+# ======================================================================== SOLAR (visualizer)
+func _build_solar(page: Control) -> void:
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page.add_child(root)
+	var top := hbox(root, 8)
+	top.add_child(label("SOLAR SYSTEM", 26, C_AMBER, false))
+	var when := label("", 18, C_TEXT, false)
+	when.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(when)
+	top.add_child(button("NOW", func() -> void:
+		if _ar.get("solar") != null:
+			(_ar["solar"] as SolarView).set_to_now(), 16, 40))
+	var body := hbox(root, 10)
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var view_panel := panel(body, "", true, true)
+	view_panel.get_parent().size_flags_stretch_ratio = 2.2
+	view_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var sv := SolarView.new()
+	sv.custom_minimum_size = Vector2(480, 360)
+	sv.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	view_panel.add_child(sv)
+	_ar["solar"] = sv
+	sv.time_changed.connect(func(jd: float) -> void:
+		var unix := (jd - 2440587.5) * 86400.0
+		var dt := Time.get_datetime_dict_from_unix_time(int(unix))
+		when.text = "UTC %04d-%02d-%02d %02d:%02d:%02d   JD %.5f" % [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, jd])
+	sv.status.connect(func(msg: String) -> void:
+		var lab: Label = _ar.get("solar_status") as Label
+		if lab:
+			lab.text = msg)
+	var side := panel(body, "CONTROLS", true, true)
+	side.get_parent().size_flags_stretch_ratio = 1.0
+	# time rates
+	side.add_child(label("TIME RATE", 16, C_DIM, false))
+	var rates := HFlowContainer.new()
+	rates.add_theme_constant_override("h_separation", 6)
+	rates.add_theme_constant_override("v_separation", 6)
+	side.add_child(rates)
+	var rate_vals := [["⏸", 0.0], ["1×", 1.0], ["1 min/s", 60.0], ["1 h/s", 3600.0], ["1 d/s", 86400.0],
+		["1 mo/s", 86400.0 * 30.0], ["1 y/s", 86400.0 * 365.25], ["100 y/s", 86400.0 * 36525.0], ["◀ REV", -86400.0]]
+	for pair: Array in rate_vals:
+		var b := button(str(pair[0]), func() -> void: sv.time_rate = float(pair[1]), 13, 36)
+		rates.add_child(b)
+	# scrubber: years around now ±50
+	side.add_child(label("SCRUB (±50 years from now)", 16, C_DIM, false))
+	var scrub := HSlider.new()
+	scrub.min_value = -50.0
+	scrub.max_value = 50.0
+	scrub.step = 0.01
+	scrub.value = 0.0
+	scrub.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	side.add_child(scrub)
+	var scrub_base := [sv.jd]
+	scrub.value_changed.connect(func(v: float) -> void:
+		sv.time_rate = 0.0
+		sv.set_jd(scrub_base[0] + v * 365.25))
+	top.get_child(2).pressed.connect(func() -> void: scrub_base[0] = SolarEphemeris.unix_to_jd(Time.get_unix_time_from_system()); scrub.value = 0.0)
+	# toggles
+	side.add_child(label("DISPLAY", 16, C_DIM, false))
+	var tg := HFlowContainer.new()
+	tg.add_theme_constant_override("h_separation", 6)
+	tg.add_theme_constant_override("v_separation", 6)
+	side.add_child(tg)
+	for spec: Array in [
+		["ORBITS", func() -> bool: return sv.show_orbits, func(v: bool) -> void: sv.show_orbits = v],
+		["PLANET ORBITS", func() -> bool: return sv.show_planet_orbits, func(v: bool) -> void: sv.show_planet_orbits = v],
+		["MOON ORBITS", func() -> bool: return sv.show_moon_orbits, func(v: bool) -> void: sv.show_moon_orbits = v],
+		["MOONS", func() -> bool: return sv.show_moons, func(v: bool) -> void: sv.show_moons = v],
+		["SHIP PATH", func() -> bool: return sv.show_ship_path, func(v: bool) -> void: sv.show_ship_path = v],
+		["EXAG. SIZE", func() -> bool: return sv.exaggerated, func(v: bool) -> void: sv.exaggerated = v],
+	]:
+		var title: String = spec[0]
+		var getter: Callable = spec[1]
+		var setter: Callable = spec[2]
+		var bb := button(title, func() -> void:
+			setter.call(not bool(getter.call()))
+			sv._rebuild_orbits()
+			if title in ["MOONS", "EXAG. SIZE"]:
+				sv._build_bodies(), 13, 36)
+		tg.add_child(bb)
+		live["solar_t_" + title] = func() -> void: bb.modulate = C_GREEN if getter.call() else Color.WHITE
+	side.add_child(label("EXAG. SIZE is off by default (true scale). Turn it on to see planet discs at AU ranges.", 14, C_DIM))
+	# warp buttons
+	side.add_child(label("WARP TO", 16, C_DIM, false))
+	var wg := grid(side, 4, 6)
+	for id: String in ["sun", "mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "moon", "io", "europa", "ganymede", "callisto", "titan", "triton", "charon"]:
+		var lab := id.capitalize() if id != "sun" else "Sun"
+		var wb := button(lab, func() -> void: sv.warp_to(id), 13, 34)
+		wg.add_child(wb)
+	var att := hbox(side, 8)
+	att.add_child(button("ATTACH", func() -> void:
+		var id := sv.follow_id if sv.follow_id != "" else sv.last_warp_id
+		if id == "" or not sv.eph.bodies.has(id):
+			id = "earth"
+		sv.attach(id, false), 14, 36))
+	att.add_child(button("ATTACH ROT", func() -> void:
+		var id := sv.follow_id if sv.follow_id != "" else sv.last_warp_id
+		if id == "" or not sv.eph.bodies.has(id):
+			id = "earth"
+		sv.attach(id, true), 14, 36))
+	att.add_child(button("DETACH", func() -> void: sv.detach(), 14, 36))
+	# camera speed
+	side.add_child(label("CAMERA SPEED (WASD/QE, RMB look, wheel zoom)", 16, C_DIM, false))
+	var sp := HFlowContainer.new()
+	sp.add_theme_constant_override("h_separation", 6)
+	sp.add_theme_constant_override("v_separation", 6)
+	side.add_child(sp)
+	for pair: Array in [["AUTO", -1.0], ["SLOW", 1e4], ["MED", 5e5], ["FAST", 5e6], ["AU/s", 1.5e8]]:
+		var sb := button(str(pair[0]), func() -> void:
+			if float(pair[1]) < 0.0:
+				sv.auto_speed = true
+			else:
+				sv.auto_speed = false
+				sv.cam_speed = float(pair[1]), 13, 34)
+		sp.add_child(sb)
+	var pred := hbox(side, 8)
+	pred.add_child(label("PATH SPAN", 14, C_DIM, false))
+	for pair2: Array in [["1 d", 86400.0], ["7 d", 86400.0 * 7], ["30 d", 86400.0 * 30], ["1 y", 86400.0 * 365.25]]:
+		pred.add_child(button(str(pair2[0]), func() -> void: sv.pred_span_s = float(pair2[1]), 13, 34))
+	var stl := label("WASD move · Q/E up/down · hold right mouse to look · scroll zoom", 14, C_DIM)
+	side.add_child(stl)
+	_ar["solar_status"] = stl
+	sv.set_to_now()
 
 
 func _build_setup(page: Control) -> void:

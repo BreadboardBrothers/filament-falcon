@@ -294,7 +294,7 @@ do_hw() {
 
 # ---------------------------------------------------------------- assets
 do_assets() {
-  step "Game assets: NASA Earth/Moon textures + OSM '$REGION' (into $DATA/assets)"
+  step "Game assets: NASA Earth/Moon textures + OSM + SOLAR maps '$REGION' (into $DATA/assets)"
   local args=("--region=$REGION"); [ "$HD" = 0 ] && args+=(--no-hd)
   if [ "$DRY" = 1 ]; then run "$GAME/tools/fetch_assets.sh" "${args[@]}"; return; fi
   "$GAME/tools/fetch_assets.sh" "${args[@]}" || fail "asset download had problems (re-run: game/tools/fetch_assets.sh)"
