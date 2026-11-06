@@ -60,6 +60,17 @@ func _run() -> void:
 	_check(sv._sky_stars.size() >= 50, "bundled bright-star catalog (%d)" % sv._sky_stars.size())
 	_check(sv._sky_galaxies.size() >= 8, "bundled galaxy catalog (%d)" % sv._sky_galaxies.size())
 	_check(sv.show_ship_path == false, "SHIP PATH default off (was yellow lines from Earth)")
+	_check(sv._sun_light != null and sv._sun_light.shadow_enabled == false, "SOLAR sun shadows off")
+	# Soft _load_tex: HTML stub must not load as a texture
+	var bogus := OS.get_environment("XDG_DATA_HOME") + "/filament-falcon/assets/solar/_bogus_io.jpg"
+	DirAccess.make_dir_recursive_absolute(bogus.get_base_dir())
+	var bf := FileAccess.open(bogus, FileAccess.WRITE)
+	if bf:
+		bf.store_string("<!DOCTYPE html><html>not a jpeg</html>")
+		bf = null
+		var bad := sv._load_tex(bogus)
+		_check(bad == null, "soft _load_tex rejects HTML-as-jpg")
+
 	_check(sv.show_labels == true, "LABELS default on")
 	_check(sv.exaggerated_sun == false, "EXAG. SUN default off")
 

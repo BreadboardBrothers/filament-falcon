@@ -10,6 +10,50 @@ OUT="$DATA/assets/solar"
 mkdir -p "$OUT"
 log() { printf '[solar] %s\n' "$*"; }
 
+# Download only if the response is a real image (never keep an HTML landing page as .jpg).
+fetch_image() {
+  local url="$1" dest="$2"
+  local tmp="$dest.part"
+  local hdr
+  hdr=$(mktemp)
+  if ! curl -fL --connect-timeout 20 --max-time 180 -A "Mozilla/5.0 FilamentFalconSolar/1.0" \
+      -D "$hdr" -o "$tmp" "$url"; then
+    rm -f "$tmp" "$hdr"
+    return 1
+  fi
+  local ctype
+  ctype=$(tr -d '\r' < "$hdr" | awk 'tolower($1)=="content-type:" {print tolower($2); exit}')
+  rm -f "$hdr"
+  case "$ctype" in
+    image/jpeg*|image/jpg*|image/png*|image/webp*|image/tiff*|image/*) ;;
+    *)
+      # Some CDNs omit/lie; fall through to magic-byte check.
+      ;;
+  esac
+  # Magic bytes: JPEG / PNG / WEBP / TIFF
+  local mag
+  mag=$(od -An -tx1 -N 12 "$tmp" 2>/dev/null | tr -d ' \n')
+  case "$mag" in
+    ffd8ff*|89504e47*|52494646*|49492a00*|4d4d002a*) ;;
+    *)
+      log "! not an image (ctype=${ctype:-?} magic=${mag:0:16}…) — skipped $dest"
+      rm -f "$tmp"
+      return 1
+      ;;
+  esac
+  # Reject tiny stubs / error bodies
+  local sz
+  sz=$(wc -c < "$tmp" | tr -d ' ')
+  if [[ "${sz:-0}" -lt 2048 ]]; then
+    log "! too small (${sz} B) — skipped $dest"
+    rm -f "$tmp"
+    return 1
+  fi
+  mv "$tmp" "$dest"
+  return 0
+}
+
+
 # Public domain / NASA imagery mirrors (URLs may move; failures are skipped with a note).
 # Prefer maps already redistributed for educational use. See SOURCES.txt.
 declare -a ITEMS=(
@@ -26,7 +70,7 @@ declare -a ITEMS=(
   "saturn|saturn_map.jpg|https://www.solarsystemscope.com/textures/download/2k_saturn.jpg|Solar System Scope (CC BY 4.0)"
   "uranus|uranus_map.jpg|https://www.solarsystemscope.com/textures/download/2k_uranus.jpg|Solar System Scope (CC BY 4.0)"
   "neptune|neptune_map.jpg|https://www.solarsystemscope.com/textures/download/2k_neptune.jpg|Solar System Scope (CC BY 4.0)"
-  "io|io_map.jpg|https://astrogeology.usgs.gov/search/map/Io/Voyager/Io_Voyager_global_mosaic_512|USGS (placeholder URL — see SOURCES)"
+  "io|io_map.jpg|https://assets.science.nasa.gov/content/dam/science/cds/3d/resources/image/jupiter---io-(a)/Jupiter%20-%20Io%20(A).jpg|NASA Science / USGS Voyager mosaic (Jupiter - Io (A); page https://science.nasa.gov/3d-resources/jupiter-io-a/)"
   "milkyway|stars_milky_way.jpg|https://www.solarsystemscope.com/textures/download/2k_stars_milky_way.jpg|Solar System Scope milky way / star field (CC BY 4.0)"
 )
 
@@ -51,12 +95,10 @@ for item in "${ITEMS[@]}"; do
     continue
   fi
   log "get $file"
-  if curl -fL --connect-timeout 20 --max-time 180 -o "$dest.part" "$url"; then
-    mv "$dest.part" "$dest"
+  if fetch_image "$url" "$dest"; then
     echo "$file  $credit  $url" >> "$OUT/SOURCES.txt"
     ok=$((ok+1))
   else
-    rm -f "$dest.part"
     log "! failed $file — place a map at $dest by hand"
     echo "MISSING $file  ($credit)  $url" >> "$OUT/SOURCES.txt"
     miss=$((miss+1))
@@ -90,12 +132,10 @@ for item in "${SKY_ITEMS[@]}"; do
     continue
   fi
   log "get sky/$file"
-  if curl -fL --connect-timeout 20 --max-time 180 -o "$dest.part" "$url"; then
-    mv "$dest.part" "$dest"
+  if fetch_image "$url" "$dest"; then
     echo "sky/$file  $credit  $url" >> "$OUT/SOURCES.txt"
     ok=$((ok+1))
   else
-    rm -f "$dest.part"
     log "! failed sky/$file — colored billboard fallback"
     echo "MISSING sky/$file  ($credit)  $url" >> "$OUT/SOURCES.txt"
     miss=$((miss+1))

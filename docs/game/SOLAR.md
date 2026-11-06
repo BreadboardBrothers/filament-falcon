@@ -40,8 +40,8 @@ True-scale solar-system visualizer on **Commander → SOLAR**. Offline by defaul
 game/tools/fetch_solar_assets.sh
 # or: game/tools/fetch_assets.sh
 ```
-Downloads into `~/.local/share/filament-falcon/assets/solar/`:
-- Planet/Sun/Moon maps (Solar System Scope CC BY 4.0)
+Downloads into `~/.local/share/filament-falcon/assets/solar/` (skips non-image responses so HTML landing pages are never kept as `.jpg`):
+- Planet/Sun/Moon maps (Solar System Scope CC BY 4.0); Io from NASA Science “Jupiter - Io (A)” (USGS/Voyager)
 - `stars_milky_way.jpg` (SSS milky-way / starfield)
 - `sky/*.jpg` galaxy stills (ESA/Hubble/ESO/Wikimedia — see `SOURCES.txt`)
 - Optional JPL moon overlay via `build_moon_catalog.py`

@@ -151,7 +151,8 @@ func _ready() -> void:
 	_root.add_child(_world_env)
 	_sun_light = DirectionalLight3D.new()
 	_sun_light.light_energy = 1.6
-	_sun_light.shadow_enabled = true
+	# Shadows in the SubViewport with hundreds of bodies are costly and crashy on weak GPUs.
+	_sun_light.shadow_enabled = false
 	_root.add_child(_sun_light)
 	_orbit_mesh = MeshInstance3D.new()
 	var omat := StandardMaterial3D.new()
@@ -612,19 +613,38 @@ func _apply_textures(mat: ShaderMaterial, b: Dictionary) -> void:
 			mat.set_shader_parameter("use_normal", true)
 
 
+## Soft texture load: missing / HTML-as-.jpg / corrupt files return null (body keeps flat color).
+## Never let a bad Io/map download take down the SOLAR SubViewport.
 func _load_tex(path: String) -> Texture2D:
 	if _tex_cache.has(path):
 		return _tex_cache[path]
-	if not FileAccess.file_exists(path):
+	if path == "" or not FileAccess.file_exists(path):
 		_tex_cache[path] = null
 		return null
-	var img := Image.load_from_file(path)
-	if img == null:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
 		_tex_cache[path] = null
 		return null
-	var t := ImageTexture.create_from_image(img)
-	_tex_cache[path] = t
-	return t
+	var head: PackedByteArray = f.get_buffer(16)
+	f = null
+	if head.size() < 4:
+		_tex_cache[path] = null
+		return null
+	# Reject HTML/XML accidentally saved as .jpg (USGS/NASA landing pages).
+	var is_jpeg := head[0] == 0xFF and head[1] == 0xD8 and head[2] == 0xFF
+	var is_png := head[0] == 0x89 and head[1] == 0x50 and head[2] == 0x4E and head[3] == 0x47
+	var is_webp := head.size() >= 12 and head[0] == 0x52 and head[1] == 0x49 and head[2] == 0x46 and head[3] == 0x46
+	if not (is_jpeg or is_png or is_webp):
+		_tex_cache[path] = null
+		return null
+	var img := Image.new()
+	var err := img.load(path)
+	if err != OK or img.get_width() < 2 or img.get_height() < 2:
+		_tex_cache[path] = null
+		return null
+	var tex := ImageTexture.create_from_image(img)
+	_tex_cache[path] = tex
+	return tex
 
 
 func _rebuild_orbits() -> void:
