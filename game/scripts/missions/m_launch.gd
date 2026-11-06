@@ -22,7 +22,7 @@ func setup() -> void:
 	tagline = "Launch to orbit"
 	briefing = "Our satellite needs a ride to space! Power up the Falcon, count down, blast off, and fly into a circle around the Earth. Then open the cargo bay and let the satellite go."
 	pilot_job = "Arm and light the engine at T-5, then fly the green marker up and over toward the east. Cut the engine when APOAPSIS is 200 km and you are going about 7.6 km/s, then burn again at the top to make the orbit round."
-	ops_job = "Watch the booster fuel. When it runs out press your TRIGGER to STAGE. In orbit: open the CARGO DOORS, switch to ARM mode, and press TRIGGER to deploy the satellite."
+	ops_job = "Watch the booster fuel. When it runs out press your TRIGGER to STAGE — it flies home to the tower catch by itself. In orbit: open the CARGO DOORS, switch to ARM mode, and press TRIGGER to deploy the satellite."
 	start_callout = "Launch sequence start. T minus 10."
 	star_thresholds = [1200, 1700]
 	objectives = [
@@ -156,9 +156,9 @@ func on_ops_trigger() -> void:
 		return
 	var early := sim.booster_fuel > 100.0
 	sim.booster_attached = false
-	booster["mode"] = "free"
 	booster["vel"] = sim.vel + sim.basis.z * 6.0
-	booster["ang_vel"] = sim.basis.x * 0.15
+	booster["basis"] = sim.basis
+	game.begin_booster_recovery(booster)
 	game.stage_flash = 1.0
 	game.camera_shake = 0.6
 	Sfx.clunk()

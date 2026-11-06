@@ -1713,12 +1713,12 @@ func _build_solar(page: Control) -> void:
 				sv._apply_sky_visibility(), 13, 36)
 		tg.add_child(bb)
 		live["solar_t_" + title] = func() -> void: bb.modulate = C_GREEN if getter.call() else Color.WHITE
-	side.add_child(label("EXAG. SIZE = planets/moons/dwarfs (moons & their orbits scale out of the planet). EXAG. SUN is separate and capped below Mercury's orbit. SHIP PATH is a red trajectory (off by default; turns on when you warp/attach to FALCON).", 14, C_DIM))
+	side.add_child(label("EXAG. SIZE = planets/moons/dwarfs (moons & their orbits scale out of the planet). EXAG. SUN is separate and capped below Mercury's orbit. SHIP PATH is red for FALCON / cyan for BOOSTER (off by default; turns on when you warp/attach).", 14, C_DIM))
 	# warp buttons
 	side.add_child(label("WARP TO", 16, C_DIM, false))
 	var wg := grid(side, 4, 6)
-	for id: String in ["sun", "mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "moon", "io", "europa", "ganymede", "callisto", "titan", "triton", "charon", "ship"]:
-		var lab := "FALCON" if id == "ship" else (id.capitalize() if id != "sun" else "Sun")
+	for id: String in ["sun", "mercury", "venus", "earth", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "moon", "io", "europa", "ganymede", "callisto", "titan", "triton", "charon", "ship", "booster"]:
+		var lab := "FALCON" if id == "ship" else ("BOOSTER" if id == "booster" else (id.capitalize() if id != "sun" else "Sun"))
 		var wb := button(lab, func() -> void: sv.warp_to(id), 13, 34)
 		wg.add_child(wb)
 	var att := hbox(side, 8)

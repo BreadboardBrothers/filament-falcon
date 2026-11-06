@@ -685,22 +685,35 @@ func _animate_entity(e: Dictionary, n: Node3D, dt: float) -> void:
 					(c as Node3D).rotation.x = lerp_angle((c as Node3D).rotation.x, want, clampf(dt * 2.0, 0.0, 1.0)) if dt < 0.5 else want
 		"booster":
 			var pl: Node3D = n.get_node_or_null("Plume")
-			var on: bool = e["mode"] == "attached" and Game.sim.booster_attached and Game.sim.thrust_now > 0.0
+			var thr_frac := 0.0
+			var on := false
+			if e["mode"] == "attached" and Game.sim.booster_attached and Game.sim.thrust_now > 0.0:
+				on = true
+				thr_frac = Game.sim.thrust_now / maxf(Game.sim.booster_thrust, 1.0)
+			elif e["mode"] == "free" or str(e.get("recovery", "")) not in ["", "caught"]:
+				thr_frac = float(e.get("thrust_frac", 0.0))
+				on = thr_frac > 0.04
 			if pl:
 				pl.visible = on
-				var thr := Game.sim.thrust_now / Game.sim.booster_thrust
-				var vac := 1.0 - clampf(Game.sim.density_now / 0.4, 0.0, 1.0)
-				pl.scale = Vector3(2.2 + vac * 3.0, 30.0 + vac * 25.0, 2.2 + vac * 3.0)
-				var pm: ShaderMaterial = pl.get_meta("mat")
-				pm.set_shader_parameter("throttle", thr)
-				pm.set_shader_parameter("vacuum", vac)
-				pm.set_shader_parameter("time", _t)
-				var hz: ShaderMaterial = pl.get_meta("haze")
-				hz.set_shader_parameter("strength", thr * (1.0 - 0.8 * vac))
-				hz.set_shader_parameter("time", _t)
+				if on:
+					var vac := 1.0 - clampf(Game.sim.density_now / 0.4, 0.0, 1.0)
+					pl.scale = Vector3(2.2 + vac * 3.0, 30.0 + vac * 25.0, 2.2 + vac * 3.0)
+					var pm: ShaderMaterial = pl.get_meta("mat")
+					pm.set_shader_parameter("throttle", thr_frac)
+					pm.set_shader_parameter("vacuum", vac)
+					pm.set_shader_parameter("time", _t)
+					var hz: ShaderMaterial = pl.get_meta("haze")
+					hz.set_shader_parameter("strength", thr_frac * (1.0 - 0.8 * vac))
+					hz.set_shader_parameter("time", _t)
 			var l: OmniLight3D = n.get_node_or_null("Light")
 			if l:
-				l.light_energy = 10.0 * (Game.sim.thrust_now / Game.sim.booster_thrust) if on else 0.0
+				l.light_energy = 10.0 * thr_frac if on else 0.0
+			var legs: Node3D = n.get_node_or_null("LandingLegs")
+			if legs:
+				legs.visible = bool(e.get("legs_deployed", false)) or str(e.get("recovery", "")) == "caught"
+			var fins: Node3D = n.get_node_or_null("GridFins")
+			if fins:
+				fins.visible = bool(e.get("fins_deployed", true))
 		"satellite":
 			if e.get("deployed", false):
 				for c in n.get_children():
@@ -713,6 +726,20 @@ func _animate_entity(e: Dictionary, n: Node3D, dt: float) -> void:
 						(c as Node3D).rotation.z = float(c.get_meta("side")) * 1.4
 		"crystal", "pod", "lunar_pad", "pad":
 			if e["kind"] == "pad":
+				var sticks: Node3D = n.get_node_or_null("Chopsticks")
+				if sticks:
+					var want_open := 1.0
+					for be in Game.entities_of("booster"):
+						var ph := str(be.get("recovery", ""))
+						if ph in ["catching", "caught"] or (be.get("mode","") == "landed" and ph == "caught"):
+							want_open = 0.0
+							break
+					var cur := float(sticks.get_meta("open", 1.0))
+					cur = move_toward(cur, want_open, dt * 1.2)
+					sticks.set_meta("open", cur)
+					for arm in sticks.get_children():
+						var side := -1.0 if str(arm.name).ends_with("L") else 1.0
+						(arm as Node3D).position.z = side * lerpf(2.2, 6.5, cur)
 				var smk: GPUParticles3D = n.get_node_or_null("PadSmoke")
 				if smk:
 					var near_pad: bool = Game.sim.thrust_now > 0.0 and Game.sim.agl < 400.0 and Game.sim.pos.rel(e["pos"]).length() < 600.0

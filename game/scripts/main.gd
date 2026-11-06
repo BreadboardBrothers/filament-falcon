@@ -9,6 +9,7 @@ extends Node
 ##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --nav-map-test        nav map globe + ground inset
 ##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --map-layer-test       AREAS map roads / rivers / names
 ##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --solar-test           SOLAR ephemeris + view
+##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --booster-recovery-test  booster RTLS/catch FSM
 ##   godot --path game -- --screenshots=DIR     capture the hero shots (use xvfb + lavapipe)
 ##   godot --path game --xr-mode on -- --eva-client   the VR spacewalk client (see EvaClient)
 
@@ -43,6 +44,9 @@ func _ready() -> void:
 		return
 	if Settings.cli.has("solar-test"):
 		add_child(load("res://tests/solar_test.gd").new())
+		return
+	if Settings.cli.has("booster-recovery-test"):
+		add_child(load("res://tests/booster_recovery_test.gd").new())
 		return
 	if Settings.cli.has("ui-fit"):
 		add_child(load("res://tests/ui_fit.gd").new())

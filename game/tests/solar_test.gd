@@ -229,6 +229,45 @@ func _run() -> void:
 		_check(sv._ship_path_mesh.mesh != null, "red ship path mesh rebuilt while following")
 	sv.detach()
 	_check(sv.follow_id == "", "detach clears ship follow")
+
+	# BOOSTER follow / attach / close zoom (fake free booster entity near ship)
+	_check(sv._free_booster_root != null, "free booster root present")
+	_check(sv.BOOSTER_PATH_COL.b > 0.8 and sv.BOOSTER_PATH_COL.r < 0.4, "booster path is cyan")
+	if Game and Game.sim and Game.sim.pos:
+		var be := Game.add_entity("booster", {
+			"mode": "free",
+			"pos": Game.sim.pos.copy(),
+			"vel": Game.sim.vel,
+			"basis": Game.sim.basis,
+			"recovery": "coast",
+			"thrust_frac": 0.0,
+			"fins_deployed": true,
+			"name": "TEST BOOSTER",
+		})
+		_check(sv.booster_available(), "booster_available after free entity")
+		_check(sv.can_follow(SolarView.BOOSTER_ID), "can_follow booster")
+		sv.warp_to_booster()
+		await _frames(2)
+		_check(sv.last_warp_id == SolarView.BOOSTER_ID, "warp_to_booster sets last_warp_id")
+		sv.attach_booster(false)
+		await _frames(3)
+		_check(sv.follow_id == SolarView.BOOSTER_ID, "attach_booster follows booster")
+		_check(sv._attach_min_dist() < 0.01, "booster attach min allows close zoom")
+		sv._dist = 0.05
+		sv._dist_goal = 0.05
+		_check(sv.close_ship_mode(), "close-vehicle mode on booster")
+		sv._update_bodies_and_clips()
+		var earth_vis2 := false
+		if sv._body_nodes.has("earth"):
+			earth_vis2 = (sv._body_nodes["earth"] as Node3D).visible
+		_check(not earth_vis2, "Earth hidden in close-booster mode")
+		sv._update_ship(0.016)
+		_check(sv._free_booster_root.visible == true, "free booster model visible while following")
+		sv.detach()
+		Game.remove_entity(be)
+	else:
+		_check(false, "Game.sim available for booster follow test")
+
 	sv.queue_free()
 	await _frames(2)
 	# SFX hitch survival (engine underruns under SOLAR)
@@ -240,5 +279,6 @@ func _run() -> void:
 
 	print("SOLAR TEST: ", "PASS" if _ok else "FAIL")
 	print("SHIP: real ShipModel + booster/EVA; red SHIP PATH; FALCON warp/attach.")
+	print("BOOSTER: free model + cyan path; WARP/ATTACH/close-zoom like FALCON.")
 	print("NOTE: old yellow Earth rays were ship path+ticks default ON; path now red, default off.")
 	get_tree().quit(0 if _ok else 1)

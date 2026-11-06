@@ -190,22 +190,65 @@ static func station() -> Node3D:
 
 
 static func booster() -> Node3D:
+	## Super-Heavy-style booster: stainless body, outset dark band (no z-fight), grid fins,
+	## foldable legs, and a dense Raptor 3 cluster (1 + 6 + 12). Keeps Plume / Light node names.
 	var root := Node3D.new()
 	var white := _white()
-	var dark := ProcGen.mat(Color(0.08, 0.08, 0.09), 0.3, 0.6)
+	var dark := ProcGen.bump_priority(ProcGen.mat(Color(0.07, 0.07, 0.08), 0.25, 0.65), 1)
 	var metal := _metal()
+	var cool := ProcGen.mat(Color(0.55, 0.14, 0.07), 0.35, 0.5)
+	var bell := ProcGen.bump_priority(ProcGen.shader_mat("res://shaders/hull.gdshader", {"base_color": Color(0.27, 0.25, 0.23), "belly_tiles": 0.0, "stripes": 0.0,
+		"panel_scale": 10.0, "metallic_base": 0.94, "rough_base": 0.28, "bump_strength": 0.5}), 2)
 	var rx := Vector3(PI * 0.5, 0, 0)
-	root.add_child(ProcGen.mesh_node(ProcGen.cyl(2.6, 2.6, 22.0, 32), white, Vector3.ZERO, rx))
-	root.add_child(ProcGen.mesh_node(ProcGen.cyl(1.9, 2.6, 2.2, 32), dark, Vector3(0, 0, -11.9), rx))
-	root.add_child(ProcGen.mesh_node(ProcGen.cyl(2.6, 2.6, 2.0, 32), dark, Vector3(0, 0, 4.0), rx))
+	# Body slightly under dark band radius so the black ring never coplanar-fights the skin.
+	root.add_child(ProcGen.mesh_node(ProcGen.cyl(2.55, 2.55, 22.0, 36), white, Vector3.ZERO, rx))
+	root.add_child(ProcGen.mesh_node(ProcGen.cyl(1.85, 2.55, 2.4, 36), dark, Vector3(0, 0, -12.0), rx))
+	root.add_child(ProcGen.mesh_node(ProcGen.cyl(2.68, 2.68, 1.7, 36), dark, Vector3(0, 0, 3.8), rx))  # outset band
+	# Grid fins (4) — thin plates clear of the barrel
+	var fins := Node3D.new()
+	fins.name = "GridFins"
+	root.add_child(fins)
 	for i in 4:
-		var a := TAU * i / 4.0
-		var fin := ProcGen.mesh_node(ProcGen.box(Vector3(0.2, 3.5, 5.0)), dark, Vector3(cos(a) * 3.6, sin(a) * 3.6, 8.5))
-		fin.rotation = Vector3(0, 0, a + PI * 0.5)
-		root.add_child(fin)
-	for i in 5:
-		var p := Vector3.ZERO if i == 0 else Vector3(cos(TAU * i / 4.0), sin(TAU * i / 4.0), 0) * 1.5
-		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.35, 0.75, 1.6, 16), metal, p + Vector3(0, 0, 11.8), rx))
+		var a := TAU * i / 4.0 + 0.2
+		var fin_root := Node3D.new()
+		fin_root.position = Vector3(cos(a) * 2.85, sin(a) * 2.85, -6.5)
+		fin_root.rotation = Vector3(0, 0, a)
+		fins.add_child(fin_root)
+		fin_root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.12, 2.8, 2.4)), dark, Vector3(0.7, 0, 0)))
+		for g in 3:
+			fin_root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.04, 2.6, 0.08)), metal, Vector3(0.7, 0, -0.8 + g * 0.8)))
+	# Landing legs (folded along body; World/SOLAR can rotate via meta)
+	var legs := Node3D.new()
+	legs.name = "LandingLegs"
+	legs.visible = false
+	root.add_child(legs)
+	for i in 4:
+		var a2 := TAU * i / 4.0
+		var leg := Node3D.new()
+		leg.position = Vector3(cos(a2) * 2.4, sin(a2) * 2.4, 9.5)
+		leg.rotation = Vector3(0, 0, a2)
+		legs.add_child(leg)
+		leg.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.18, 0.18, 4.5)), metal, Vector3(1.2, 0, 1.5)))
+		leg.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(1.2, 0.08, 0.8)), dark, Vector3(2.0, 0, 3.5)))
+	# Raptor 3 cluster: centre + ring of 6 + ring of 12
+	var aft_z := 11.5
+	root.add_child(ProcGen.mesh_node(ProcGen.cyl(2.2, 2.2, 0.2, 36), metal, Vector3(0, 0, aft_z - 0.35), rx))
+	var positions: Array = [Vector3.ZERO]
+	for i in 6:
+		var a3 := TAU * i / 6.0
+		positions.append(Vector3(cos(a3), sin(a3), 0) * 0.85)
+	for i in 12:
+		var a4 := TAU * i / 12.0 + 0.1
+		positions.append(Vector3(cos(a4), sin(a4), 0) * 1.75)
+	for i in positions.size():
+		var p: Vector3 = positions[i]
+		var z_off := 0.15 if i == 0 else (0.05 if i <= 6 else 0.0)
+		var r_bot := 0.42 if i == 0 else (0.38 if i <= 6 else 0.34)
+		var h := 1.35 if i == 0 else 1.2
+		var add_pos := p + Vector3(0, 0, aft_z + z_off)
+		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.14, 0.14, 0.2, 12), metal, add_pos + Vector3(0, 0, -0.55), rx))
+		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.18, 0.18, 0.05, 12), cool, add_pos + Vector3(0, 0, -0.4), rx))
+		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.15, r_bot, h, 16), bell, add_pos, rx))
 	var plume_mat := ProcGen.shader_mat("res://shaders/plume.gdshader", {"core_color": Color(1.0, 0.7, 0.35)})
 	var pm := CylinderMesh.new()
 	pm.top_radius = 1.0
@@ -214,7 +257,7 @@ static func booster() -> Node3D:
 	pm.rings = 8
 	var pivot := Node3D.new()
 	pivot.name = "Plume"
-	pivot.position = Vector3(0, 0, 12.6)
+	pivot.position = Vector3(0, 0, aft_z + 1.6)
 	pivot.rotation = Vector3(-PI * 0.5, 0, 0)
 	root.add_child(pivot)
 	var plume := ProcGen.mesh_node(pm, plume_mat, Vector3(0, -0.5, 0))
@@ -222,17 +265,19 @@ static func booster() -> Node3D:
 	pivot.add_child(plume)
 	pivot.set_meta("mat", plume_mat)
 	var haze_mat := ProcGen.shader_mat("res://shaders/heat_haze.gdshader")
-	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3(0, -0.5, 0), Vector3.ZERO, Vector3(1.3, 0.35, 1.3))
+	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3(0, -0.55, 0), Vector3.ZERO, Vector3(1.4, 0.4, 1.4))
 	haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	pivot.add_child(haze)
 	pivot.set_meta("haze", haze_mat)
 	var l := OmniLight3D.new()
 	l.name = "Light"
-	l.position = Vector3(0, 0, 16.0)
+	l.position = Vector3(0, 0, aft_z + 4.5)
 	l.light_color = Color(1.0, 0.6, 0.3)
 	l.omni_range = 300.0
 	l.light_energy = 0.0
 	root.add_child(l)
+	root.set_meta("legs", legs)
+	root.set_meta("fins", fins)
 	return root
 
 
@@ -460,6 +505,20 @@ static func pad() -> Node3D:
 		sp.light_color = Color(1.0, 0.95, 0.85)
 		root.add_child(sp)
 		_blink_light(root, p + Vector3(0, 41.5, 0), Color(1, 0.1, 0.1), 10.0)
+	# Mechazilla chopsticks (catch arms) — open by default; close when a booster is caught.
+	var sticks := Node3D.new()
+	sticks.name = "Chopsticks"
+	sticks.position = Vector3(10.0, 58.0, 0.0)
+	root.add_child(sticks)
+	var arm_mat := ProcGen.mat(Color(0.55, 0.56, 0.58), 0.85, 0.35)
+	for side: float in [-1.0, 1.0]:
+		var arm := Node3D.new()
+		arm.name = "ArmL" if side < 0.0 else "ArmR"
+		arm.position = Vector3(0, 0, side * 6.5)
+		sticks.add_child(arm)
+		arm.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(14.0, 0.7, 1.1)), arm_mat, Vector3(-5.0, 0, 0)))
+		arm.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(1.2, 1.2, 1.2)), arm_mat, Vector3(-12.0, 0, 0)))
+	sticks.set_meta("open", 1.0)  # 1 = open, 0 = closed on booster
 	var smk := pad_smoke()
 	smk.position = Vector3(0, 3.0, 40.0)
 	root.add_child(smk)

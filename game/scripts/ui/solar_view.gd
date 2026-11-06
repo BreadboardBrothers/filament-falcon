@@ -6,6 +6,7 @@ extends Control
 ## Hover ray-pick shows a fact card; warp frames the lit hemisphere at ~half screen height.
 ## While attached: LMB/RMB orbit (yaw/pitch, no pole flip), wheel log-zoom, optional Shift/MMB pan; WASD detaches.
 ## FALCON: live ShipModel (+booster stage, EVA astronaut), red trajectory; warp/attach via follow_id "ship".
+## BOOSTER: free/recovering stage warp/attach via follow_id "booster" (cyan path); same close-zoom as ship.
 ## Labels, sky (stars/galaxies/Milky Way), separate Sun exaggeration, live orbit rebuild.
 
 signal time_changed(jd: float)
@@ -18,12 +19,16 @@ const SCENE_REF := 1000.0
 const FAR_RATIO_MAX := 5.0e6
 const HALF_SCREEN_FRAC := 0.5
 const SHIP_ID := "ship"
+const BOOSTER_ID := "booster"
 const SHIP_LEN_M := 15.0
 const SHIP_WITH_BOOSTER_M := 42.0
+const BOOSTER_LEN_M := 26.0
 const SHIP_PATH_COL := Color(1.0, 0.2, 0.15, 0.9)
 const SHIP_PATH_TICK := Color(1.0, 0.35, 0.2, 0.75)
+const BOOSTER_PATH_COL := Color(0.15, 0.85, 1.0, 0.9)
+const BOOSTER_PATH_TICK := Color(0.35, 0.9, 1.0, 0.75)
 const BOOSTER_OFFSET_M := Vector3(0, 0, 19.5)
-## Below this distance while attached to FALCON, enter close-ship mode (true meter scale,
+## Below this distance while attached to FALCON/BOOSTER, enter close-vehicle mode (true meter scale,
 ## hide planets/orbits so Earth does not explode the scene).
 const CLOSE_SHIP_KM := 100.0
 const SCENE_DIST_FLOOR_KM := 1.0
@@ -67,6 +72,10 @@ var _ship_path_mesh: MeshInstance3D
 var _ship_root: Node3D
 var _ship_model: ShipModel
 var _ship_booster: Node3D
+var _free_booster_root: Node3D
+var _free_booster_model: Node3D
+var _free_booster_marker: MeshInstance3D
+var _booster_path_mesh: MeshInstance3D
 var _ship_eva: AstronautModel
 var _ship_tether: MeshInstance3D
 var _ship_tether_mesh: ImmediateMesh
@@ -266,6 +275,37 @@ func _build_ship_nodes() -> void:
 	_ship_marker.visible = false
 	_ship_root.add_child(_ship_marker)
 	_ship_root.visible = false
+	_free_booster_root = Node3D.new()
+	_free_booster_root.name = "FreeBoosterRoot"
+	_root.add_child(_free_booster_root)
+	_free_booster_model = Models.booster()
+	_free_booster_model.name = "FreeBooster"
+	_free_booster_root.add_child(_free_booster_model)
+	_free_booster_marker = MeshInstance3D.new()
+	var bmk := SphereMesh.new()
+	bmk.radius = 1.0
+	bmk.height = 2.0
+	_free_booster_marker.mesh = bmk
+	var bmmat := StandardMaterial3D.new()
+	bmmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bmmat.albedo_color = Color(0.2, 0.85, 1.0, 0.85)
+	bmmat.emission_enabled = true
+	bmmat.emission = Color(0.15, 0.7, 1.0)
+	bmmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_free_booster_marker.material_override = bmmat
+	_free_booster_marker.visible = false
+	_free_booster_root.add_child(_free_booster_marker)
+	_free_booster_root.visible = false
+	_booster_path_mesh = MeshInstance3D.new()
+	_booster_path_mesh.name = "BoosterPath"
+	var bpmat := StandardMaterial3D.new()
+	bpmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bpmat.vertex_color_use_as_albedo = true
+	bpmat.albedo_color = Color.WHITE
+	bpmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_booster_path_mesh.material_override = bpmat
+	_booster_path_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_root.add_child(_booster_path_mesh)
 
 
 func _load_facts() -> void:
@@ -358,17 +398,69 @@ func ship_ecliptic_km() -> Dictionary:
 	return {"ok": true, "pos": epos + geocentric_km, "vel": v_km_s, "earth": epos}
 
 
+## First free / recovering / caught booster entity (or null dict when none).
+func live_booster_entity() -> Dictionary:
+	if Game == null:
+		return {}
+	for e in Game.entities_of("booster"):
+		var mode := str(e.get("mode", ""))
+		var rec := str(e.get("recovery", ""))
+		if mode == "attached":
+			continue
+		if mode in ["free", "landed"] or rec != "":
+			return e
+	return {}
 
-## True when attached to FALCON and zoomed in close enough that planet-scale flooring would
-## freeze the ship as a speck — and Earth would wreck precision if drawn true-scale.
+
+func booster_available() -> bool:
+	return not live_booster_entity().is_empty()
+
+
+func booster_length_m() -> float:
+	return BOOSTER_LEN_M
+
+
+func booster_radius_km() -> float:
+	return booster_length_m() * 0.001 * 0.5
+
+
+func booster_standoff_km() -> float:
+	var R := booster_radius_km()
+	var fov := deg_to_rad(_cam.fov if _cam else 70.0)
+	var half_ang := fov * HALF_SCREEN_FRAC * 0.5
+	var d := R / maxf(tan(half_ang), 1e-8)
+	return maxf(d, R * 1.35 + 0.01)
+
+
+func booster_ecliptic_km() -> Dictionary:
+	var e := live_booster_entity()
+	if e.is_empty() or e.get("pos") == null:
+		return {"ok": false}
+	var earth := eph.planet_state("earth", jd)
+	if not earth.get("ok", false):
+		return {"ok": false}
+	var epos: Vector3 = earth["pos"]
+	var bv: BigVec = e["pos"]
+	var geocentric_km := Vector3(bv.x(), bv.y(), bv.z()) * 0.001
+	var evel: Vector3 = earth.get("vel", Vector3.ZERO)
+	var v_km_s := Vector3(e.get("vel", Vector3.ZERO)) * 0.001 + evel
+	return {"ok": true, "pos": epos + geocentric_km, "vel": v_km_s, "earth": epos, "entity": e}
+
+
+func _is_vehicle_follow() -> bool:
+	return follow_id == SHIP_ID or follow_id == BOOSTER_ID
+
+
+## True when attached to FALCON/BOOSTER and zoomed in close enough that planet-scale flooring would
+## freeze the vehicle as a speck — and Earth would wreck precision if drawn true-scale.
 func close_ship_mode() -> bool:
-	return follow_id == SHIP_ID and _dist < CLOSE_SHIP_KM
+	return _is_vehicle_follow() and _dist < CLOSE_SHIP_KM
 
 
-## Scene units per km. MUST NOT floor at 1 km while on the Falcon (standoff ~0.02 km).
+## Scene units per km. MUST NOT floor at 1 km while on the Falcon/booster (standoff ~0.02 km).
 func _scene_scale(dist_km: float = -1.0) -> float:
 	var d := _dist if dist_km < 0.0 else dist_km
-	if follow_id == SHIP_ID:
+	if _is_vehicle_follow():
 		return SCENE_REF / maxf(d, 1e-6)
 	return SCENE_REF / maxf(d, SCENE_DIST_FLOOR_KM)
 
@@ -376,6 +468,8 @@ func _scene_scale(dist_km: float = -1.0) -> float:
 func standoff_km(id: String) -> float:
 	if id == SHIP_ID:
 		return ship_standoff_km()
+	if id == BOOSTER_ID:
+		return booster_standoff_km()
 	var R := _visual_radius(id)
 	var fov := deg_to_rad(_cam.fov if _cam else 70.0)
 	var half_ang := fov * HALF_SCREEN_FRAC * 0.5
@@ -384,7 +478,7 @@ func standoff_km(id: String) -> float:
 
 
 func clip_planes_for_dist(dist_km: float, nearest_surface_km: float = -1.0) -> Dictionary:
-	var ship_close := follow_id == SHIP_ID
+	var ship_close := _is_vehicle_follow()
 	var d := maxf(dist_km, 1e-6 if ship_close else SCENE_DIST_FLOOR_KM)
 	var s := SCENE_REF / d
 	var near_km: float
@@ -419,6 +513,9 @@ func warp_to(id: String) -> void:
 	if id == SHIP_ID:
 		warp_to_ship()
 		return
+	if id == BOOSTER_ID:
+		warp_to_booster()
+		return
 	if not eph.bodies.has(id):
 		return
 	follow_id = ""
@@ -444,9 +541,25 @@ func warp_to_ship() -> void:
 	status.emit("warped to Filament Falcon")
 
 
+func warp_to_booster() -> void:
+	var bp := booster_ecliptic_km()
+	if not bp.get("ok", false):
+		status.emit("booster unavailable")
+		return
+	follow_id = ""
+	_apply_booster_framing(bp["pos"] as Vector3)
+	show_ship_path = true
+	_force_orbit_rebuild()
+	last_warp_id = BOOSTER_ID
+	status.emit("warped to booster")
+
+
 func attach(id: String, rotating := false) -> void:
 	if id == SHIP_ID:
 		attach_ship(rotating)
+		return
+	if id == BOOSTER_ID:
+		attach_booster(rotating)
 		return
 	if not eph.bodies.has(id):
 		return
@@ -474,13 +587,31 @@ func attach_ship(rotating := false) -> void:
 	status.emit(("attached (rotating)" if rotating else "attached") + " to Filament Falcon · drag orbit · wheel zoom")
 
 
+func attach_booster(rotating := false) -> void:
+	var bp := booster_ecliptic_km()
+	if not bp.get("ok", false):
+		status.emit("booster unavailable")
+		return
+	follow_id = BOOSTER_ID
+	follow_rotating = rotating
+	follow_keep_lit = false
+	_apply_booster_framing(bp["pos"] as Vector3)
+	show_ship_path = true
+	_force_orbit_rebuild()
+	status.emit(("attached (rotating)" if rotating else "attached") + " to booster · drag orbit · wheel zoom")
+
+
 func detach() -> void:
 	follow_id = ""
 	status.emit("camera free")
 
 
 func can_follow(id: String) -> bool:
-	return id == SHIP_ID or eph.bodies.has(id)
+	if id == SHIP_ID:
+		return true
+	if id == BOOSTER_ID:
+		return booster_available()
+	return eph.bodies.has(id)
 
 
 func _apply_lit_framing(id: String, body_pos: Vector3) -> void:
@@ -505,6 +636,18 @@ func _apply_ship_framing(ship_pos: Vector3) -> void:
 	# Slight yaw offset so we see the Falcon's side / engines, not only the sunlit silhouette.
 	_pitch = asin(clampf(dir.y * 0.4 + 0.12, -0.99, 0.99))
 	_yaw = atan2(-dir.x, -dir.z) + 0.55
+	_yaw_goal = _yaw
+	_pitch_goal = _pitch
+	_dist_goal = _dist
+
+
+func _apply_booster_framing(booster_pos: Vector3) -> void:
+	_focus = booster_pos
+	_dist = booster_standoff_km()
+	var from_sun := booster_pos if booster_pos.length() > 1.0 else Vector3(1.0, 0.2, 0.4)
+	var dir := from_sun.normalized()
+	_pitch = asin(clampf(dir.y * 0.35 + 0.15, -0.99, 0.99))
+	_yaw = atan2(-dir.x, -dir.z) + 0.7
 	_yaw_goal = _yaw
 	_pitch_goal = _pitch
 	_dist_goal = _dist
@@ -794,7 +937,7 @@ func _process(dt: float) -> void:
 	if not close_ship_mode():
 		if absf(jd - _orbit_jd) > 0.01 and _orbit_rebuild_cool <= 0.0:
 			_rebuild_orbits()
-			_orbit_rebuild_cool = 1.0 if follow_id == SHIP_ID else 0.2
+			_orbit_rebuild_cool = 1.0 if _is_vehicle_follow() else 0.2
 	_update_bodies_and_clips()
 	_update_camera(dt)
 	_update_ship(dt)
@@ -817,6 +960,13 @@ func _update_follow() -> void:
 			_focus = sp["pos"] as Vector3
 			if follow_keep_lit:
 				_apply_ship_framing(_focus)
+		return
+	if follow_id == BOOSTER_ID:
+		var bp := booster_ecliptic_km()
+		if bp.get("ok", false):
+			_focus = bp["pos"] as Vector3
+			if follow_keep_lit:
+				_apply_booster_framing(_focus)
 		return
 	if not eph.bodies.has(follow_id):
 		return
@@ -846,7 +996,8 @@ func _update_bodies_and_clips() -> void:
 		# Hide planets — true-scale Earth at meter camera distance wrecks precision/perf.
 		for id: String in _body_nodes.keys():
 			(_body_nodes[id] as Node3D).visible = false
-		var hull := maxf(_dist - ship_radius_km(), 0.0005)
+		var veh_r := booster_radius_km() if follow_id == BOOSTER_ID else ship_radius_km()
+		var hull := maxf(_dist - veh_r, 0.0005)
 		var clips_c := clip_planes_for_dist(_dist, hull)
 		_cam.near = clips_c["near"]
 		_cam.far = clips_c["far"]
@@ -955,14 +1106,18 @@ func _update_ship(dt: float = 0.0) -> void:
 	var s := _scene_scale()
 	if _ship_root == null:
 		return
+	_ship_anim_t += dt
+	_ship_path_cool = maxf(_ship_path_cool - dt, 0.0)
 	if sim == null or sim.pos == null:
 		_ship_root.visible = false
 		_ship_path_mesh.mesh = null
+		_sync_free_booster(s, dt)
 		return
 	var sp := ship_ecliptic_km()
 	if not sp.get("ok", false):
 		_ship_root.visible = false
 		_ship_path_mesh.mesh = null
+		_sync_free_booster(s, dt)
 		return
 	var ship_ecl: Vector3 = sp["pos"]
 	_ship_root.visible = true
@@ -972,7 +1127,6 @@ func _update_ship(dt: float = 0.0) -> void:
 	# Live hull / plumes / doors / gear (same path as World).
 	if _ship_model and Game:
 		_ship_model.animate(Game, dt)
-	_ship_anim_t += dt
 	_sync_booster(sim)
 	_sync_eva(dt)
 	# Far marker so the Falcon stays findable when the real model is sub-pixel.
@@ -982,27 +1136,45 @@ func _update_ship(dt: float = 0.0) -> void:
 		_ship_marker.visible = tiny
 		if tiny:
 			_ship_marker.scale = Vector3.ONE * maxf(0.8 / maxf(meter_s, 1e-9), 1.0)
-	_ship_path_cool = maxf(_ship_path_cool - dt, 0.0)
+	_sync_free_booster(s, dt)
+	_rebuild_vehicle_paths(ship_ecl, sp["vel"], s)
+
+
+func _rebuild_vehicle_paths(ship_ecl: Vector3, ship_vel: Vector3, s: float) -> void:
 	if not show_ship_path:
 		_ship_path_mesh.mesh = null
+		if _booster_path_mesh:
+			_booster_path_mesh.mesh = null
 		_ship_path_key = ""
 		return
-	# Throttle path rebuild — propagate_ship + ImmediateMesh every frame hitchs audio.
 	var path_steps := 96 if close_ship_mode() else 160
 	var key := "%s|%.3f|%.0f|%d|%.5f" % [follow_id, pred_span_s, jd, path_steps, s]
 	if _ship_path_cool > 0.0 and key == _ship_path_key and _ship_path_mesh.mesh != null:
 		return
 	_ship_path_key = key
-	_ship_path_cool = 0.2 if follow_id == SHIP_ID else 0.1
-	var path: Array = eph.propagate_ship(ship_ecl, sp["vel"], jd, pred_span_s, path_steps)
+	_ship_path_cool = 0.2 if _is_vehicle_follow() else 0.1
+	if follow_id == BOOSTER_ID:
+		_ship_path_mesh.mesh = null
+		var bp := booster_ecliptic_km()
+		if bp.get("ok", false) and _booster_path_mesh:
+			var bpath: Array = eph.propagate_ship(bp["pos"], bp["vel"], jd, minf(pred_span_s, DAY * 0.5), path_steps)
+			_booster_path_mesh.mesh = _make_path_mesh(bpath, s, BOOSTER_PATH_COL, BOOSTER_PATH_TICK)
+	else:
+		if _booster_path_mesh:
+			_booster_path_mesh.mesh = null
+		var path: Array = eph.propagate_ship(ship_ecl, ship_vel, jd, pred_span_s, path_steps)
+		_ship_path_mesh.mesh = _make_path_mesh(path, s, SHIP_PATH_COL, SHIP_PATH_TICK)
+
+
+func _make_path_mesh(path: Array, s: float, col: Color, tick_col: Color) -> ImmediateMesh:
 	var imm := ImmediateMesh.new()
 	imm.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
-	imm.surface_set_color(SHIP_PATH_COL)
+	imm.surface_set_color(col)
 	for pt: Dictionary in path:
 		imm.surface_add_vertex((pt["pos"] - _focus) * s)
 	imm.surface_end()
 	imm.surface_begin(Mesh.PRIMITIVE_LINES)
-	imm.surface_set_color(SHIP_PATH_TICK)
+	imm.surface_set_color(tick_col)
 	var n := path.size()
 	var tick := maxf(SCENE_REF * 0.0004, 0.05)
 	for i in 8:
@@ -1013,7 +1185,54 @@ func _update_ship(dt: float = 0.0) -> void:
 		imm.surface_add_vertex(p - Vector3(0, tick, 0))
 		imm.surface_add_vertex(p + Vector3(0, tick, 0))
 	imm.surface_end()
-	_ship_path_mesh.mesh = imm
+	return imm
+
+
+func _sync_free_booster(s: float, dt: float) -> void:
+	if _free_booster_root == null:
+		return
+	var bp := booster_ecliptic_km()
+	if not bp.get("ok", false):
+		_free_booster_root.visible = false
+		return
+	var e: Dictionary = bp.get("entity", {})
+	_free_booster_root.visible = true
+	var meter_s := 0.001 * s
+	var basis: Basis = e.get("basis", Basis.IDENTITY)
+	_free_booster_root.transform = Transform3D(basis.scaled(Vector3.ONE * meter_s), (bp["pos"] - _focus) * s)
+	# Plume / legs / fins from recovery state
+	var thr_frac := float(e.get("thrust_frac", 0.0))
+	var on := thr_frac > 0.04
+	var pl: Node3D = _free_booster_model.get_node_or_null("Plume") if _free_booster_model else null
+	if pl:
+		pl.visible = on
+		if on:
+			var vac := 1.0 - clampf((Game.sim.density_now if Game and Game.sim else 0.0) / 0.4, 0.0, 1.0)
+			pl.scale = Vector3(2.2 + vac * 3.0, 30.0 + vac * 25.0, 2.2 + vac * 3.0)
+			if pl.has_meta("mat"):
+				var pm: ShaderMaterial = pl.get_meta("mat")
+				pm.set_shader_parameter("throttle", thr_frac)
+				pm.set_shader_parameter("vacuum", vac)
+				pm.set_shader_parameter("time", _ship_anim_t)
+			if pl.has_meta("haze"):
+				var hz: ShaderMaterial = pl.get_meta("haze")
+				hz.set_shader_parameter("strength", thr_frac * (1.0 - 0.8 * vac))
+				hz.set_shader_parameter("time", _ship_anim_t)
+	var l: OmniLight3D = _free_booster_model.get_node_or_null("Light") if _free_booster_model else null
+	if l:
+		l.light_energy = 10.0 * thr_frac if on else 0.0
+	var legs: Node3D = _free_booster_model.get_node_or_null("LandingLegs") if _free_booster_model else null
+	if legs:
+		legs.visible = bool(e.get("legs_deployed", false)) or str(e.get("recovery", "")) == "caught"
+	var fins: Node3D = _free_booster_model.get_node_or_null("GridFins") if _free_booster_model else null
+	if fins:
+		fins.visible = bool(e.get("fins_deployed", true))
+	var ang := (booster_length_m() * meter_s) / maxf(SCENE_REF, 1e-3)
+	var tiny := ang < 0.004
+	if _free_booster_marker:
+		_free_booster_marker.visible = tiny
+		if tiny:
+			_free_booster_marker.scale = Vector3.ONE * maxf(0.8 / maxf(meter_s, 1e-9), 1.0)
 
 
 func _sync_booster(sim: ShipSim) -> void:
@@ -1548,6 +1767,8 @@ func _attach_min_dist() -> float:
 	if follow_id == SHIP_ID:
 		# ~2–5 m from hull centre — close enough to see the EVA walking clearly.
 		return maxf(ship_radius_km() * 0.35, 0.002)
+	if follow_id == BOOSTER_ID:
+		return maxf(booster_radius_km() * 0.35, 0.002)
 	if follow_id == "" or not eph.bodies.has(follow_id):
 		return 10.0
 	var R := _visual_radius(follow_id)
@@ -1557,6 +1778,8 @@ func _attach_min_dist() -> float:
 func _attach_max_dist() -> float:
 	if follow_id == SHIP_ID:
 		return maxf(ship_standoff_km() * 80.0, 500.0)  # km — out to see Earth + path
+	if follow_id == BOOSTER_ID:
+		return maxf(booster_standoff_km() * 80.0, 500.0)
 	if follow_id == "" or not eph.bodies.has(follow_id):
 		return AU_KM * 500.0
 	var R := _visual_radius(follow_id)
@@ -1633,7 +1856,7 @@ func _gui_input(ev: InputEvent) -> void:
 		elif panning and follow_id != "":
 			var right := Vector3(cos(_yaw), 0.0, -sin(_yaw))
 			var up := Vector3.UP
-			var pan_spd := maxf(_dist * 0.0015, 0.00001 if follow_id == SHIP_ID else 1.0)
+			var pan_spd := maxf(_dist * 0.0015, 0.00001 if _is_vehicle_follow() else 1.0)
 			_focus += (-right * mm.relative.x + up * mm.relative.y) * pan_spd
 			# pan offsets from the body; detach so focus sticks where user put it
 			follow_id = ""

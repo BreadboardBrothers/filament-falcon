@@ -15,6 +15,14 @@ static func mat(color: Color, metallic: float = 0.0, roughness: float = 0.6, emi
 	return m
 
 
+static func bump_priority(mat: Material, pri: int) -> Material:
+	if mat is BaseMaterial3D:
+		(mat as BaseMaterial3D).render_priority = pri
+	elif mat is ShaderMaterial:
+		(mat as ShaderMaterial).render_priority = pri
+	return mat
+
+
 static func glow_mat(color: Color, energy: float = 4.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

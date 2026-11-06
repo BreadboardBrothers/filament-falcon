@@ -14,11 +14,12 @@ True-scale solar-system visualizer on **Commander → SOLAR**. Offline by defaul
 
 ## Filament Falcon
 - **FALCON** in WARP TO: frames the live ship (~half screen) and turns on the **red** SHIP PATH trajectory.
-- **ATTACH** / **ATTACH ROT** follow the ship as it moves (orbit/zoom with the mouse; WASD detaches).
-- Real **ShipModel** (engines, RCS, doors, gear, plasma) animated from `Game` state; **booster** shown under/aft while `booster_attached`; **EVA astronaut** (+ simple tether) while `Eva.active`.
-- When far away a faint red marker keeps the ship findable; zoom/attach to see the real model.
-- **Close zoom:** ATTACH → wheel in uses true `_dist` (no 1 km scale floor), min ~few metres so EVA is clear. Close-ship mode hides planets/orbits/sky.
-- **Perf / audio:** path/orbit rebuilds throttled on FALCON; SFX buffer 0.5 s + chunk refill after hitches.
+- **BOOSTER** in WARP TO: frames a free / recovering stage (cyan path). Available after staging.
+- **ATTACH** / **ATTACH ROT** follow the ship **or booster** as it moves (orbit/zoom with the mouse; WASD detaches).
+- Real **ShipModel** (Raptor 3 engines, RCS, doors, gear, plasma) animated from `Game` state; attached **booster** under/aft while `booster_attached`; free booster uses `Models.booster()` (grid fins, legs, multi-Raptor cluster); **EVA astronaut** (+ simple tether) while `Eva.active`.
+- When far away a faint marker keeps the vehicle findable; zoom/attach to see engines/fins.
+- **Close zoom:** ATTACH → wheel in uses true `_dist` (no 1 km scale floor), min ~few metres. Close-vehicle mode hides planets/orbits/sky (same perf win for ship and booster).
+- **Perf / audio:** path/orbit rebuilds throttled on FALCON/BOOSTER; SFX buffer 0.5 s + chunk refill after hitches.
 
 ## Camera
 - **Free flight:** WASD/QE move, hold right mouse to look, wheel zoom.
@@ -55,7 +56,9 @@ Bundled (no download): `game/data/solar/sky_stars.json`, `sky_galaxies.json`, `f
 XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --solar-test
 XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --ui-fit
 ```
-`--solar-test` covers ephemeris, clips, half-screen warp, separate Sun exag + moon orbit exag, body-on-orbit across scrubbed times, parent-attached moon orbits, sky catalogs, ship-path default (red trajectory), attach orbit/zoom + WASD detach, FALCON warp/attach + ShipModel/booster.
+`--solar-test` covers ephemeris, clips, half-screen warp, separate Sun exag + moon orbit exag, body-on-orbit across scrubbed times, parent-attached moon orbits, sky catalogs, ship-path default (red trajectory), attach orbit/zoom + WASD detach, FALCON + BOOSTER warp/attach/close-zoom + ShipModel/booster.
+
+Booster RTLS / Mechazilla catch: `--booster-recovery-test` (lean FSM → caught near pad).
 
 ## Files
 - `game/data/solar/catalog.json`, `facts.json`, `sky_stars.json`, `sky_galaxies.json`

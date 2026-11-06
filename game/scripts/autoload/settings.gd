@@ -155,7 +155,7 @@ func _parse_cli() -> void:
 
 
 func is_test_run() -> bool:
-	return cli.has("smoke-test") or cli.has("flight-test") or cli.has("screenshots")
+	return cli.has("smoke-test") or cli.has("flight-test") or cli.has("screenshots") or cli.has("solar-test") or cli.has("booster-recovery-test")
 
 
 func is_headless() -> bool:

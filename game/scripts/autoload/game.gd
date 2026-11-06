@@ -465,6 +465,146 @@ func _place_entity(e: Dictionary) -> void:
 			e["basis"] = sim.basis * e.get("local_basis", Basis.IDENTITY)
 
 
+## Start autonomous F9 / Starship-style return after staging (boostback → coast → burns → Mechazilla catch).
+func begin_booster_recovery(e: Dictionary) -> void:
+	e["mode"] = "free"
+	e["recovery"] = "boostback"
+	e["thrust_frac"] = 0.0
+	e["ang_vel"] = Vector3.ZERO
+	e["legs_deployed"] = false
+	e["fins_deployed"] = true
+	e["catch_t"] = 0.0
+	e["recovery_t"] = 0.0
+	Voice.say("Booster boostback.", 1)
+
+
+func _booster_catch_offset(pad: Dictionary) -> Vector3:
+	# Pad local: tower at +X ≈ 10–14 m, chopsticks ~58 m up.
+	var b: Basis = pad.get("basis", Basis.IDENTITY)
+	return b * Vector3(8.0, 58.0, 0.0)
+
+
+func _booster_orient(e: Dictionary, want_z: Vector3, h: float) -> void:
+	if want_z.length_squared() < 1e-8:
+		return
+	var z := want_z.normalized()
+	# Pick a reference that is not parallel to z (pad_dir is radial; often == ±up).
+	var ref := Vector3.UP
+	if absf(z.dot(ref)) > 0.95:
+		ref = Vector3.RIGHT
+	if absf(z.dot(ref)) > 0.95:
+		ref = Vector3.FORWARD
+	var x := ref.cross(z)
+	if x.length_squared() < 1e-8:
+		return
+	x = x.normalized()
+	var y := z.cross(x).normalized()
+	var target := Basis(x, y, z).orthonormalized()
+	var cur: Basis = (e.get("basis", Basis.IDENTITY) as Basis).orthonormalized()
+	var q0: Quaternion = cur.get_rotation_quaternion()
+	var q1: Quaternion = target.get_rotation_quaternion()
+	e["basis"] = Basis(q0.slerp(q1, clampf(h * 1.8, 0.0, 1.0))).orthonormalized()
+
+
+func _booster_burn(e: Dictionary, desire: Vector3, h: float, max_a: float) -> void:
+	var a := desire.limit_length(max_a)
+	e["vel"] += a * h
+	e["thrust_frac"] = clampf(a.length() / maxf(max_a, 1.0), 0.0, 1.0)
+	if a.length() > 0.8:
+		# Engines fire along +body Z → thrust accel is −body Z.
+		_booster_orient(e, -a.normalized(), h)
+
+
+func _update_booster_recovery(e: Dictionary, h: float) -> void:
+	var phase := str(e.get("recovery", ""))
+	if phase == "" or phase == "caught":
+		e["thrust_frac"] = 0.0
+		return
+	e["recovery_t"] = float(e.get("recovery_t", 0.0)) + h
+	var pads := entities_of("pad")
+	if pads.is_empty():
+		e["thrust_frac"] = 0.0
+		return
+	var pad: Dictionary = pads[0]
+	var catch_pos: BigVec = pad["pos"].copy()
+	catch_pos.add(_booster_catch_offset(pad))
+	var to_catch: Vector3 = catch_pos.rel(e["pos"])  # catch − booster
+	var dist := to_catch.length()
+	var up: Vector3 = (pad.get("basis", Basis.IDENTITY) as Basis).y
+	var vel_rel: Vector3 = e["vel"] - pad.get("vel", Vector3.ZERO)
+	var earth_rel: Vector3 = e["pos"].rel(earth.pos)
+	var alt := earth_rel.length() - earth.radius
+	match phase:
+		"boostback":
+			e["fins_deployed"] = true
+			var horiz := to_catch - up * to_catch.dot(up)
+			var hdir := horiz.normalized() if horiz.length() > 10.0 else -vel_rel.slide(up).normalized()
+			var desire := hdir * 280.0 - vel_rel.slide(up) * 0.9 - up * clampf(vel_rel.dot(up), -80.0, 40.0) * 0.3
+			_booster_burn(e, desire, h, 28.0)
+			if e["recovery_t"] > 18.0 or (horiz.length() < 25000.0 and vel_rel.slide(up).dot(hdir) > -40.0):
+				e["recovery"] = "coast"
+				e["recovery_t"] = 0.0
+				e["thrust_frac"] = 0.0
+				Voice.say("Booster coasting.", 1)
+		"coast":
+			e["thrust_frac"] = 0.0
+			_booster_orient(e, -up, h * 0.5)
+			if alt < 90000.0 or dist < 140000.0 or e["recovery_t"] > 90.0:
+				e["recovery"] = "entry"
+				e["recovery_t"] = 0.0
+				Voice.say("Entry burn.", 1)
+		"entry":
+			var desire2 := -vel_rel * 1.1 + to_catch.normalized() * 40.0
+			_booster_burn(e, desire2, h, 22.0)
+			if alt < 14000.0 or dist < 30000.0 or e["recovery_t"] > 55.0:
+				e["recovery"] = "landing"
+				e["recovery_t"] = 0.0
+				e["legs_deployed"] = true
+				Voice.say("Landing burn.", 1)
+		"landing":
+			var desire3 := to_catch * 0.22 - vel_rel * 1.35
+			# Soften vertical slam into chopsticks.
+			desire3 += up * clampf(8.0 - vel_rel.dot(up), -25.0, 35.0)
+			_booster_burn(e, desire3, h, 38.0)
+			_booster_orient(e, -up, h)
+			if dist < 55.0 and vel_rel.length() < 28.0:
+				e["recovery"] = "catching"
+				e["recovery_t"] = 0.0
+				e["thrust_frac"] = 0.15
+				Voice.say("Chopsticks ready.", 1)
+			elif e["recovery_t"] > 70.0:
+				# Fail-safe: pad landing.
+				e["mode"] = "landed"
+				e["recovery"] = "caught"
+				e["thrust_frac"] = 0.0
+				e["vel"] = pad.get("vel", Vector3.ZERO)
+				var soft: BigVec = pad["pos"].copy()
+				soft.add((pad.get("basis", Basis.IDENTITY) as Basis) * Vector3(0, 12.0, 0))
+				e["pos"] = soft
+				_booster_orient(e, -up, 1.0)
+				Voice.say("Booster landed.", 1)
+				game_event.emit("booster_caught", e)
+		"catching":
+			var blend := clampf(e["recovery_t"] / 2.2, 0.0, 1.0)
+			var cur: Vector3 = e["pos"].rel(catch_pos)
+			e["pos"].add(-cur * clampf(h * 2.5, 0.0, 1.0))
+			e["vel"] = e["vel"].lerp(pad.get("vel", Vector3.ZERO), clampf(h * 3.0, 0.0, 1.0))
+			e["thrust_frac"] = lerpf(0.15, 0.0, blend)
+			_booster_orient(e, -up, h)
+			if blend >= 1.0 or cur.length() < 6.0:
+				e["mode"] = "landed"
+				e["recovery"] = "caught"
+				e["thrust_frac"] = 0.0
+				e["vel"] = pad.get("vel", Vector3.ZERO)
+				e["pos"] = catch_pos.copy()
+				_booster_orient(e, -up, 1.0)
+				Voice.say("Catch confirmed!", 1)
+				add_score("Booster caught", 100)
+				game_event.emit("booster_caught", e)
+		_:
+			e["thrust_frac"] = 0.0
+
+
 func _update_entities(h: float) -> void:
 	for e in entities:
 		var mode: String = e["mode"]
@@ -476,15 +616,18 @@ func _update_entities(h: float) -> void:
 				var d2 := r.length_squared()
 				g += r * (body.gm / (d2 * sqrt(d2)))
 			e["vel"] += g * h
+			if str(e.get("kind", "")) == "booster" and str(e.get("recovery", "")) != "":
+				_update_booster_recovery(e, h)
 			e["pos"].add(e["vel"] * h)
 			var av: Vector3 = e["ang_vel"]
 			if av.length_squared() > 1e-10:
 				e["basis"] = (Basis(av.normalized(), av.length() * h) * e["basis"]).orthonormalized()
-			# Land on surfaces: just stop.
-			var rel: Vector3 = e["pos"].rel(sim.dominant.pos) if sim.dominant else Vector3.ONE * 1e9
-			if sim.dominant and rel.length() < sim.dominant.radius + sim.dominant.terrain_height(rel.normalized()):
-				e["mode"] = "landed"
-				e["vel"] = sim.dominant.vel
+			# Land on surfaces only if not in active recovery (recovery handles catch).
+			if str(e.get("recovery", "")) in ["", "caught"]:
+				var rel: Vector3 = e["pos"].rel(sim.dominant.pos) if sim.dominant else Vector3.ONE * 1e9
+				if sim.dominant and rel.length() < sim.dominant.radius + sim.dominant.terrain_height(rel.normalized()):
+					e["mode"] = "landed"
+					e["vel"] = sim.dominant.vel
 		elif mode == "field":
 			e["offset"] += e["drift"] * h
 			_place_entity(e)

@@ -67,36 +67,48 @@ func _build() -> void:
 	crew.name = "Crew"
 	add_child(crew)
 	# flaps (hinged near the waterline; tiles on the windward face)
-	var flap_mat := ProcGen.shader_mat("res://shaders/hull.gdshader", {"base_color": Color(0.08, 0.08, 0.09), "metallic_base": 0.1,
-		"rough_base": 0.7, "stripes": 0.0, "belly_tiles": 1.0, "panel_scale": 3.0})
+	var flap_mat := ProcGen.bump_priority(ProcGen.shader_mat("res://shaders/hull.gdshader", {"base_color": Color(0.08, 0.08, 0.09), "metallic_base": 0.1,
+		"rough_base": 0.7, "stripes": 0.0, "belly_tiles": 1.0, "panel_scale": 3.0}), 1)
 	for sx: float in [-1.0, 1.0]:
 		var fwd := PackedVector2Array([Vector2(0.0, -5.6), Vector2(1.5 * sx, -5.0), Vector2(1.5 * sx, -3.9), Vector2(0.0, -3.4)])
 		if sx > 0.0:
 			fwd.reverse()
-		var ff := ProcGen.mesh_node(ProcGen.extrude(fwd, 0.14), flap_mat, Vector3(sx * 1.55, -0.35, 0))
+		var ff := ProcGen.mesh_node(ProcGen.extrude(fwd, 0.14), flap_mat, Vector3(sx * 1.62, -0.42, 0))
 		ff.name = "FwdFlap"
 		add_child(ff)
 		var aft := PackedVector2Array([Vector2(0.0, 3.4), Vector2(2.1 * sx, 4.6), Vector2(2.1 * sx, 6.9), Vector2(0.0, 7.0)])
 		if sx > 0.0:
 			aft.reverse()
-		var af := ProcGen.mesh_node(ProcGen.extrude(aft, 0.18), flap_mat, Vector3(sx * 1.85, -0.35, 0))
+		var af := ProcGen.mesh_node(ProcGen.extrude(aft, 0.18), flap_mat, Vector3(sx * 1.92, -0.42, 0))
 		af.name = "AftFlap"
 		add_child(af)
 		# flap hinge fairings
 		add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.3, 0.3, 1.8)), hull_mat, Vector3(sx * 1.55, -0.3, -4.5)))
 		add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.3, 0.3, 3.2)), hull_mat, Vector3(sx * 1.85, -0.3, 5.3)))
-	# Raptor cluster: 3 sea-level (centre) + 3 vacuum bells (outer), on an aft dome
-	var metal := ProcGen.mat(Color(0.25, 0.24, 0.23), 0.9, 0.35)
-	var bell_mat := ProcGen.shader_mat("res://shaders/hull.gdshader", {"base_color": Color(0.3, 0.28, 0.27), "belly_tiles": 0.0, "stripes": 0.0,
-		"panel_scale": 7.0, "metallic_base": 0.9, "rough_base": 0.3, "bump_strength": 0.6})
-	add_child(ProcGen.mesh_node(ProcGen.cyl(1.5, 1.5, 0.12, 48), metal, Vector3(0, 0, 7.3), Vector3(PI * 0.5, 0, 0)))
+	# Raptor 3 cluster: 3 centre sea-level (short) + 3 outer vacuum (large), no coplanar skirts.
+	var metal := ProcGen.mat(Color(0.22, 0.21, 0.2), 0.92, 0.32)
+	var bell_sl := ProcGen.bump_priority(ProcGen.shader_mat("res://shaders/hull.gdshader", {"base_color": Color(0.28, 0.26, 0.24), "belly_tiles": 0.0, "stripes": 0.0,
+		"panel_scale": 9.0, "metallic_base": 0.95, "rough_base": 0.28, "bump_strength": 0.55}), 2)
+	var bell_vac := ProcGen.bump_priority(ProcGen.shader_mat("res://shaders/hull.gdshader", {"base_color": Color(0.32, 0.3, 0.28), "belly_tiles": 0.0, "stripes": 0.0,
+		"panel_scale": 11.0, "metallic_base": 0.95, "rough_base": 0.22, "bump_strength": 0.45}), 2)
+	var cool := ProcGen.mat(Color(0.55, 0.15, 0.08), 0.4, 0.45)  # regenerative cooling ring tint
+	# Aft heat-shield dome (slightly forward of bells so it never shares a plane with nozzles)
+	add_child(ProcGen.mesh_node(ProcGen.cyl(1.55, 1.55, 0.18, 48), metal, Vector3(0, 0, 7.15), Vector3(PI * 0.5, 0, 0)))
+	var hot := ProcGen.bump_priority(ProcGen.glow_mat(Color(1.0, 0.45, 0.15), 2.2), 3)
+	add_child(ProcGen.mesh_node(ProcGen.cyl(0.55, 0.55, 0.04, 24), hot, Vector3(0, 0, 7.28), Vector3(PI * 0.5, 0, 0)))
 	for k in 3:
-		var ang := TAU * k / 3.0
-		add_child(ProcGen.mesh_node(ProcGen.cyl(0.18, 0.38, 0.9, 24), bell_mat, Vector3(cos(ang) * 0.42, sin(ang) * 0.42 * EvaScenarios.YS, 7.8), Vector3(PI * 0.5, 0, 0)))
+		var ang := TAU * k / 3.0 + 0.15
+		var p_sl := Vector3(cos(ang) * 0.48, sin(ang) * 0.48 * EvaScenarios.YS, 7.85)
+		# SL Raptor 3: short nozzle + cooling band + throat (stacked with gaps)
+		add_child(ProcGen.mesh_node(ProcGen.cyl(0.16, 0.16, 0.22, 16), metal, p_sl + Vector3(0, 0, -0.35), Vector3(PI * 0.5, 0, 0)))
+		add_child(ProcGen.mesh_node(ProcGen.cyl(0.2, 0.2, 0.06, 16), cool, p_sl + Vector3(0, 0, -0.2), Vector3(PI * 0.5, 0, 0)))
+		add_child(ProcGen.mesh_node(ProcGen.cyl(0.17, 0.36, 0.7, 24), bell_sl, p_sl, Vector3(PI * 0.5, 0, 0)))
 		var ang2 := ang + PI / 3.0
-		add_child(ProcGen.mesh_node(ProcGen.cyl(0.25, 0.62, 1.5, 24), bell_mat, Vector3(cos(ang2) * 1.05, sin(ang2) * 1.05 * EvaScenarios.YS, 8.1), Vector3(PI * 0.5, 0, 0)))
-	var hot := ProcGen.glow_mat(Color(1.0, 0.5, 0.2), 2.0)
-	add_child(ProcGen.mesh_node(ProcGen.cyl(0.6, 0.6, 0.05, 24), hot, Vector3(0, 0, 7.3), Vector3(PI * 0.5, 0, 0)))
+		var p_v := Vector3(cos(ang2) * 1.12, sin(ang2) * 1.12 * EvaScenarios.YS, 8.35)
+		# Vac Raptor 3: longer, wider nozzle; cooling ring inset from bell lip
+		add_child(ProcGen.mesh_node(ProcGen.cyl(0.2, 0.2, 0.28, 16), metal, p_v + Vector3(0, 0, -0.55), Vector3(PI * 0.5, 0, 0)))
+		add_child(ProcGen.mesh_node(ProcGen.cyl(0.26, 0.26, 0.07, 16), cool, p_v + Vector3(0, 0, -0.35), Vector3(PI * 0.5, 0, 0)))
+		add_child(ProcGen.mesh_node(ProcGen.cyl(0.22, 0.72, 1.55, 28), bell_vac, p_v, Vector3(PI * 0.5, 0, 0)))
 	plume_mat = ProcGen.shader_mat("res://shaders/plume.gdshader")
 	var pm := CylinderMesh.new()
 	pm.top_radius = 1.0
@@ -107,20 +119,20 @@ func _build() -> void:
 	plume = ProcGen.mesh_node(pm, plume_mat)
 	plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var plume_pivot := Node3D.new()
-	plume_pivot.position = Vector3(0, 0, 9.1)
+	plume_pivot.position = Vector3(0, 0, 9.55)  # past vac bell lips — no coplanar overlap
 	plume_pivot.rotation = Vector3(-PI * 0.5, 0, 0)
 	add_child(plume_pivot)
 	plume.position = Vector3(0, -0.5, 0)
 	plume_pivot.add_child(plume)
 	plume_pivot.name = "PlumePivot"
 	haze_mat = ProcGen.shader_mat("res://shaders/heat_haze.gdshader")
-	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3(0, -0.5, 0))
+	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3(0, -0.55, 0), Vector3.ZERO, Vector3(1.15, 1.0, 1.15))
 	haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	haze.name = "Haze"
 	plume_pivot.add_child(haze)
 	_greebles(metal)
 	engine_light = OmniLight3D.new()
-	engine_light.position = Vector3(0, 0, 11.0)
+	engine_light.position = Vector3(0, 0, 11.2)
 	engine_light.light_color = Color(1.0, 0.65, 0.35)
 	engine_light.omni_range = 120.0
 	engine_light.light_energy = 0.0
@@ -258,9 +270,10 @@ func _greebles(metal: Material) -> void:
 	add_child(ProcGen.mesh_node(ProcGen.cyl(0.02, 0.03, 0.9, 6), metal, Vector3(0.5, 1.95, 0.0)))
 	add_child(ProcGen.mesh_node(ProcGen.cyl(0.02, 0.03, 0.6, 6), metal, Vector3(-0.6, 1.9, -1.8)))
 	add_child(ProcGen.mesh_node(ProcGen.sphere(0.28, 16, 8), ProcGen.mat(Color(0.85, 0.85, 0.8), 0.0, 0.3), Vector3(0, -1.55, -2.0), Vector3.ZERO, Vector3(1, 0.5, 1)))
-	# hatch outline on the side
+	# hatch outline on the side (outset + priority so it never z-fights the hull skin)
+	var hatch := ProcGen.bump_priority(frame, 2)
 	for s2: float in [-1.0, 1.0]:
-		add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.03, 0.9, 0.7)), frame, Vector3(s2 * 1.62, 0.5, -1.5)))
+		add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.04, 0.85, 0.65)), hatch, Vector3(s2 * 1.72, 0.5, -1.5)))
 
 
 ## Lathe like ProcGen.lathe but indexed (smooth normals), closed at both ends, with the hull
