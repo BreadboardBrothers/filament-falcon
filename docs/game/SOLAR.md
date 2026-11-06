@@ -12,6 +12,12 @@ True-scale solar-system visualizer on **Commander → SOLAR**. Offline by defaul
 - **Orbit lines update with time**: planet polylines resample as JD changes; moon orbits are drawn relative to the parent’s **current** position so they travel with the planet. Bodies stay on their lines.
 - **SHIP PATH** default **off** (the old orange/yellow trajectory + tall ticks looked like “yellow lines from Earth”).
 
+## Filament Falcon
+- **FALCON** in WARP TO: frames the live ship (~half screen) and turns on the **red** SHIP PATH trajectory.
+- **ATTACH** / **ATTACH ROT** follow the ship as it moves (orbit/zoom with the mouse; WASD detaches).
+- Real **ShipModel** (engines, RCS, doors, gear, plasma) animated from `Game` state; **booster** shown under/aft while `booster_attached`; **EVA astronaut** (+ simple tether) while `Eva.active`.
+- When far away a faint red marker keeps the ship findable; zoom/attach to see the real model.
+
 ## Camera
 - **Free flight:** WASD/QE move, hold right mouse to look, wheel zoom.
 - **Attached** (ATTACH / ATTACH ROT): left- or right-drag **orbits** around the body (yaw/pitch, clamped so it does not flip at the poles); **wheel** zooms on a log scale (min just above the surface, max far enough to see its moons). Orbit angles and distance are kept as the body moves. Smoothing eases the motion. **Shift+drag** or **middle-drag** pans (and detaches). **WASD/QE** detaches into free flight.
@@ -47,7 +53,7 @@ Bundled (no download): `game/data/solar/sky_stars.json`, `sky_galaxies.json`, `f
 XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --solar-test
 XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --ui-fit
 ```
-`--solar-test` covers ephemeris, clips, half-screen warp, separate Sun exag + moon orbit exag, body-on-orbit across scrubbed times, parent-attached moon orbits, sky catalogs, ship-path default, attach orbit/zoom + WASD detach.
+`--solar-test` covers ephemeris, clips, half-screen warp, separate Sun exag + moon orbit exag, body-on-orbit across scrubbed times, parent-attached moon orbits, sky catalogs, ship-path default (red trajectory), attach orbit/zoom + WASD detach, FALCON warp/attach + ShipModel/booster.
 
 ## Files
 - `game/data/solar/catalog.json`, `facts.json`, `sky_stars.json`, `sky_galaxies.json`

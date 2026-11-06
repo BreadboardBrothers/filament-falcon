@@ -180,10 +180,33 @@ func _run() -> void:
 	sv._update_camera(0.05)
 	sv._keys["W"] = false
 	_check(sv.follow_id == "", "WASD detaches from object")
+
+	# FALCON / live ship
+	_check(sv._ship_model != null and sv._ship_model is ShipModel, "ShipModel present (not SphereMesh)")
+	_check(sv._ship_booster != null, "booster node present")
+	_check(sv.SHIP_PATH_COL.r > 0.8 and sv.SHIP_PATH_COL.g < 0.4, "ship path is red")
+	sv.warp_to_ship()
+	await _frames(3)
+	_check(sv.last_warp_id == SolarView.SHIP_ID, "warp_to_ship sets last_warp_id")
+	_check(sv.show_ship_path == true, "warp to FALCON enables SHIP PATH")
+	sv.attach_ship(false)
+	await _frames(3)
+	_check(sv.follow_id == SolarView.SHIP_ID, "attach_ship follows ship")
+	var foc0 := sv._focus
+	if Game and Game.sim:
+		Game.sim.booster_attached = true
+		sv._update_ship(0.016)
+		_check(sv._ship_booster.visible == true, "booster visible when attached")
+		Game.sim.booster_attached = false
+		sv._update_ship(0.016)
+		_check(sv._ship_booster.visible == false, "booster hidden after staging")
+		sv._update_ship(0.016)
+		_check(sv._ship_path_mesh.mesh != null, "red ship path mesh rebuilt while following")
+	sv.detach()
+	_check(sv.follow_id == "", "detach clears ship follow")
 	sv.queue_free()
 	await _frames(2)
 	print("SOLAR TEST: ", "PASS" if _ok else "FAIL")
-	print("ROOT CAUSE (yellow lines): ship trajectory path + tall vertical tick marks in _update_ship,")
-	print("  colored orange/yellow, default ON, drawn from Earth's vicinity via geocentric ShipSim.")
-	print("  Fix: show_ship_path default false; ticks shortened; path recolored cyan.")
+	print("SHIP: real ShipModel + booster/EVA; red SHIP PATH; FALCON warp/attach.")
+	print("NOTE: old yellow Earth rays were ship path+ticks default ON; path now red, default off.")
 	get_tree().quit(0 if _ok else 1)
