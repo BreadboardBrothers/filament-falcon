@@ -38,7 +38,7 @@ var _rng := RandomNumberGenerator.new()
 func _ready() -> void:
 	var gen := AudioStreamGenerator.new()
 	gen.mix_rate = RATE
-	gen.buffer_length = 0.25   # survive frame hitches without crackle
+	gen.buffer_length = 0.5    # survive SOLAR/frame hitches without rhythmic underruns
 	player = AudioStreamPlayer.new()
 	player.stream = gen
 	player.volume_db = float(Settings.get_v("audio", "master_db"))
@@ -117,7 +117,15 @@ func sad_trombone() -> void:
 func _process(_dt: float) -> void:
 	if pb == null:
 		return
-	var n := mini(pb.get_frames_available(), 4096)
+	# After a hitch the generator can be nearly empty; refill in chunks until
+	# topped up so engine rumble does not rhythmically drop out under SOLAR load.
+	var safety := 0
+	while pb.get_frames_available() > 256 and safety < 48:
+		_fill_audio_chunk(mini(pb.get_frames_available(), 2048))
+		safety += 1
+
+
+func _fill_audio_chunk(n: int) -> void:
 	if n <= 0:
 		return
 	var buf := PackedVector2Array()

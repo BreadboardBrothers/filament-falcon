@@ -23,6 +23,10 @@ const SHIP_WITH_BOOSTER_M := 42.0
 const SHIP_PATH_COL := Color(1.0, 0.2, 0.15, 0.9)
 const SHIP_PATH_TICK := Color(1.0, 0.35, 0.2, 0.75)
 const BOOSTER_OFFSET_M := Vector3(0, 0, 19.5)
+## Below this distance while attached to FALCON, enter close-ship mode (true meter scale,
+## hide planets/orbits so Earth does not explode the scene).
+const CLOSE_SHIP_KM := 100.0
+const SCENE_DIST_FLOOR_KM := 1.0
 const OBLIQUITY := 0.409092804
 const PLANET_EXAG := 1200.0
 const SUN_EXAG_CAP_AU := 0.30
@@ -68,6 +72,9 @@ var _ship_tether: MeshInstance3D
 var _ship_tether_mesh: ImmediateMesh
 var _ship_marker: MeshInstance3D
 var _ship_anim_t := 0.0
+var _ship_path_cool := 0.0
+var _ship_path_key := ""
+var _close_ship_prev := false
 var _focus := Vector3.ZERO
 var _yaw := 0.3
 var _pitch := -0.4
@@ -351,6 +358,21 @@ func ship_ecliptic_km() -> Dictionary:
 	return {"ok": true, "pos": epos + geocentric_km, "vel": v_km_s, "earth": epos}
 
 
+
+## True when attached to FALCON and zoomed in close enough that planet-scale flooring would
+## freeze the ship as a speck — and Earth would wreck precision if drawn true-scale.
+func close_ship_mode() -> bool:
+	return follow_id == SHIP_ID and _dist < CLOSE_SHIP_KM
+
+
+## Scene units per km. MUST NOT floor at 1 km while on the Falcon (standoff ~0.02 km).
+func _scene_scale(dist_km: float = -1.0) -> float:
+	var d := _dist if dist_km < 0.0 else dist_km
+	if follow_id == SHIP_ID:
+		return SCENE_REF / maxf(d, 1e-6)
+	return SCENE_REF / maxf(d, SCENE_DIST_FLOOR_KM)
+
+
 func standoff_km(id: String) -> float:
 	if id == SHIP_ID:
 		return ship_standoff_km()
@@ -362,17 +384,29 @@ func standoff_km(id: String) -> float:
 
 
 func clip_planes_for_dist(dist_km: float, nearest_surface_km: float = -1.0) -> Dictionary:
-	var d := maxf(dist_km, 1.0)
+	var ship_close := follow_id == SHIP_ID
+	var d := maxf(dist_km, 1e-6 if ship_close else SCENE_DIST_FLOOR_KM)
 	var s := SCENE_REF / d
-	var near_km := d * 1e-4
-	if nearest_surface_km >= 0.0:
-		near_km = maxf(nearest_surface_km * 0.15, d * 1e-5)
-	near_km = clampf(near_km, 0.05 / s, d * 0.35)
-	var far_km := maxf(d * 80.0, AU_KM * 2.0)
-	var local_horizon_km := maxf(d * 60.0, AU_KM * 0.05)
-	far_km = minf(far_km, local_horizon_km * 1.4)
-	var near_u := maxf(near_km * s, 0.02)
-	var far_u := maxf(far_km * s, near_u * 100.0)
+	var near_km: float
+	var far_km: float
+	var local_horizon_km: float
+	if ship_close:
+		# Meter-scale: keep EVA/hull in front of the near plane; far covers local space.
+		near_km = maxf(d * 0.05, 0.00025)  # ≥ ~0.25 m
+		if nearest_surface_km >= 0.0:
+			near_km = maxf(minf(nearest_surface_km * 0.35, d * 0.4), 0.0002)
+		far_km = clampf(maxf(d * 250.0, 80.0), 20.0, 8000.0)
+		local_horizon_km = far_km
+	else:
+		near_km = d * 1e-4
+		if nearest_surface_km >= 0.0:
+			near_km = maxf(nearest_surface_km * 0.15, d * 1e-5)
+		near_km = clampf(near_km, 0.05 / s, d * 0.35)
+		far_km = maxf(d * 80.0, AU_KM * 2.0)
+		local_horizon_km = maxf(d * 60.0, AU_KM * 0.05)
+		far_km = minf(far_km, local_horizon_km * 1.4)
+	var near_u := maxf(near_km * s, 0.01 if ship_close else 0.02)
+	var far_u := maxf(far_km * s, near_u * (50.0 if ship_close else 100.0))
 	if far_u / near_u > FAR_RATIO_MAX:
 		far_u = near_u * FAR_RATIO_MAX
 	return {
@@ -671,7 +705,7 @@ func _orbit_line_planet(imm: ImmediateMesh, id: String, col: Color, steps: int) 
 	var b: Dictionary = eph.bodies[id]
 	imm.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
 	imm.surface_set_color(col)
-	var s := SCENE_REF / maxf(_dist, 1.0)
+	var s := _scene_scale()
 	var dL := float(b.get("dL_deg_cy", 360.0))
 	var days_per_orbit := 360.0 / maxf(absf(dL) / 36525.0, 1e-6)
 	for i in steps + 1:
@@ -694,7 +728,7 @@ func _orbit_line_moon(imm: ImmediateMesh, id: String, col: Color, steps: int) ->
 	var parent_pos: Vector3 = parent_now["pos"]
 	var period := float(b.get("period_d", 1.0))
 	var scale_orb := _moon_orbit_scale(id, parent_id)
-	var s := SCENE_REF / maxf(_dist, 1.0)
+	var s := _scene_scale()
 	imm.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
 	imm.surface_set_color(col)
 	for i in steps + 1:
@@ -756,9 +790,11 @@ func _process(dt: float) -> void:
 		time_changed.emit(jd)
 	_update_follow()
 	_orbit_rebuild_cool = maxf(_orbit_rebuild_cool - dt, 0.0)
-	if absf(jd - _orbit_jd) > 0.01 and _orbit_rebuild_cool <= 0.0:
-		_rebuild_orbits()
-		_orbit_rebuild_cool = 0.2
+	# Skip / slow orbit rebuilds while on the Falcon — big CPU hitch source under SOLAR.
+	if not close_ship_mode():
+		if absf(jd - _orbit_jd) > 0.01 and _orbit_rebuild_cool <= 0.0:
+			_rebuild_orbits()
+			_orbit_rebuild_cool = 1.0 if follow_id == SHIP_ID else 0.2
 	_update_bodies_and_clips()
 	_update_camera(dt)
 	_update_ship(dt)
@@ -799,6 +835,25 @@ func _update_bodies_and_clips() -> void:
 		_last_rebuild_moons = show_moons
 		_build_bodies()
 		_force_orbit_rebuild()
+	var close := close_ship_mode()
+	if close != _close_ship_prev:
+		_close_ship_prev = close
+		if _orbit_mesh:
+			_orbit_mesh.visible = not close
+		if _sky_root:
+			_sky_root.visible = not close  # save draw cost; space is black enough up close
+	if close:
+		# Hide planets — true-scale Earth at meter camera distance wrecks precision/perf.
+		for id: String in _body_nodes.keys():
+			(_body_nodes[id] as Node3D).visible = false
+		var hull := maxf(_dist - ship_radius_km(), 0.0005)
+		var clips_c := clip_planes_for_dist(_dist, hull)
+		_cam.near = clips_c["near"]
+		_cam.far = clips_c["far"]
+		var sun_dir_c := (-_focus) if _focus.length() > 1.0 else Vector3(1, 0.3, 0.2)
+		_sun_light.position = sun_dir_c.normalized() * 100.0
+		_sun_light.look_at(Vector3.ZERO)
+		return
 	var nearest_surf := _dist
 	var clips := clip_planes_for_dist(_dist)
 	var s: float = clips["scale"]
@@ -897,7 +952,7 @@ func _update_camera(dt: float) -> void:
 
 func _update_ship(dt: float = 0.0) -> void:
 	var sim: ShipSim = Game.sim if Game else null
-	var s := SCENE_REF / maxf(_dist, 1.0)
+	var s := _scene_scale()
 	if _ship_root == null:
 		return
 	if sim == null or sim.pos == null:
@@ -927,10 +982,19 @@ func _update_ship(dt: float = 0.0) -> void:
 		_ship_marker.visible = tiny
 		if tiny:
 			_ship_marker.scale = Vector3.ONE * maxf(0.8 / maxf(meter_s, 1e-9), 1.0)
+	_ship_path_cool = maxf(_ship_path_cool - dt, 0.0)
 	if not show_ship_path:
 		_ship_path_mesh.mesh = null
+		_ship_path_key = ""
 		return
-	var path: Array = eph.propagate_ship(ship_ecl, sp["vel"], jd, pred_span_s, 256)
+	# Throttle path rebuild — propagate_ship + ImmediateMesh every frame hitchs audio.
+	var path_steps := 96 if close_ship_mode() else 160
+	var key := "%s|%.3f|%.0f|%d|%.5f" % [follow_id, pred_span_s, jd, path_steps, s]
+	if _ship_path_cool > 0.0 and key == _ship_path_key and _ship_path_mesh.mesh != null:
+		return
+	_ship_path_key = key
+	_ship_path_cool = 0.2 if follow_id == SHIP_ID else 0.1
+	var path: Array = eph.propagate_ship(ship_ecl, sp["vel"], jd, pred_span_s, path_steps)
 	var imm := ImmediateMesh.new()
 	imm.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
 	imm.surface_set_color(SHIP_PATH_COL)
@@ -1203,6 +1267,15 @@ func _ensure_label(id: String) -> Dictionary:
 
 
 func _update_labels() -> void:
+	if close_ship_mode():
+		for e in _label_nodes.values():
+			if typeof(e) != TYPE_DICTIONARY:
+				continue
+			var lab: Label = e.get("lab") as Label
+			var ln: Line2D = e.get("line") as Line2D
+			if lab: lab.visible = false
+			if ln: ln.visible = false
+		return
 	if _label_layer == null or _cam == null:
 		return
 	var want: Array = []
@@ -1473,7 +1546,8 @@ func _fmt_num(x: float) -> String:
 
 func _attach_min_dist() -> float:
 	if follow_id == SHIP_ID:
-		return maxf(ship_radius_km() * 1.2 + 0.005, 0.02)
+		# ~2–5 m from hull centre — close enough to see the EVA walking clearly.
+		return maxf(ship_radius_km() * 0.35, 0.002)
 	if follow_id == "" or not eph.bodies.has(follow_id):
 		return 10.0
 	var R := _visual_radius(follow_id)
@@ -1482,7 +1556,7 @@ func _attach_min_dist() -> float:
 
 func _attach_max_dist() -> float:
 	if follow_id == SHIP_ID:
-		return maxf(ship_standoff_km() * 40.0, 80.0)  # km — close system view of Earth orbit
+		return maxf(ship_standoff_km() * 80.0, 500.0)  # km — out to see Earth + path
 	if follow_id == "" or not eph.bodies.has(follow_id):
 		return AU_KM * 500.0
 	var R := _visual_radius(follow_id)
@@ -1559,7 +1633,7 @@ func _gui_input(ev: InputEvent) -> void:
 		elif panning and follow_id != "":
 			var right := Vector3(cos(_yaw), 0.0, -sin(_yaw))
 			var up := Vector3.UP
-			var pan_spd := maxf(_dist * 0.0015, 1.0)
+			var pan_spd := maxf(_dist * 0.0015, 0.00001 if follow_id == SHIP_ID else 1.0)
 			_focus += (-right * mm.relative.x + up * mm.relative.y) * pan_spd
 			# pan offsets from the body; detach so focus sticks where user put it
 			follow_id = ""

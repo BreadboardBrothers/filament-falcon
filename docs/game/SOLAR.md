@@ -17,6 +17,8 @@ True-scale solar-system visualizer on **Commander → SOLAR**. Offline by defaul
 - **ATTACH** / **ATTACH ROT** follow the ship as it moves (orbit/zoom with the mouse; WASD detaches).
 - Real **ShipModel** (engines, RCS, doors, gear, plasma) animated from `Game` state; **booster** shown under/aft while `booster_attached`; **EVA astronaut** (+ simple tether) while `Eva.active`.
 - When far away a faint red marker keeps the ship findable; zoom/attach to see the real model.
+- **Close zoom:** ATTACH → wheel in uses true `_dist` (no 1 km scale floor), min ~few metres so EVA is clear. Close-ship mode hides planets/orbits/sky.
+- **Perf / audio:** path/orbit rebuilds throttled on FALCON; SFX buffer 0.5 s + chunk refill after hitches.
 
 ## Camera
 - **Free flight:** WASD/QE move, hold right mouse to look, wheel zoom.

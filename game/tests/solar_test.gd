@@ -203,6 +203,20 @@ func _run() -> void:
 	sv.attach_ship(false)
 	await _frames(3)
 	_check(sv.follow_id == SolarView.SHIP_ID, "attach_ship follows ship")
+	_check(sv._attach_min_dist() < 0.01, "ship attach min allows EVA-close zoom (<%.4f km)" % sv._attach_min_dist())
+	sv._dist = 0.05
+	sv._dist_goal = 0.05
+	var s_far := sv._scene_scale()
+	sv._dist = 0.005
+	sv._dist_goal = 0.005
+	var s_near := sv._scene_scale()
+	_check(s_near > s_far * 5.0, "ship scene scale tracks sub-km zoom (no 1 km floor): %.1f→%.1f" % [s_far, s_near])
+	_check(sv.close_ship_mode(), "close-ship mode while attached nearby")
+	sv._update_bodies_and_clips()
+	var earth_vis := false
+	if sv._body_nodes.has("earth"):
+		earth_vis = (sv._body_nodes["earth"] as Node3D).visible
+	_check(not earth_vis, "Earth hidden in close-ship mode")
 	var foc0 := sv._focus
 	if Game and Game.sim:
 		Game.sim.booster_attached = true
@@ -217,6 +231,13 @@ func _run() -> void:
 	_check(sv.follow_id == "", "detach clears ship follow")
 	sv.queue_free()
 	await _frames(2)
+	# SFX hitch survival (engine underruns under SOLAR)
+	if Sfx and Sfx.player and Sfx.player.stream is AudioStreamGenerator:
+		var gen := Sfx.player.stream as AudioStreamGenerator
+		_check(gen.buffer_length >= 0.45, "SFX generator buffer ≥0.45 s (got %.2f)" % gen.buffer_length)
+	else:
+		_check(false, "SFX AudioStreamGenerator available")
+
 	print("SOLAR TEST: ", "PASS" if _ok else "FAIL")
 	print("SHIP: real ShipModel + booster/EVA; red SHIP PATH; FALCON warp/attach.")
 	print("NOTE: old yellow Earth rays were ship path+ticks default ON; path now red, default off.")
