@@ -496,7 +496,7 @@ func _process(dt: float) -> void:
 	elif g.view_mode == 0:
 		rig_xform = Transform3D(sim.basis, sim.basis * (EYE + shake))
 	else:
-		rig_xform = chase_xform(sim, 34.0 if not sim.booster_attached else 75.0)
+		rig_xform = chase_xform(sim, chase_distance(sim))
 		rig_xform.origin += sim.basis * shake * 20.0
 	# Hyperspace tunnel
 	tunnel.visible = g.jump_phase > 0.0
@@ -756,10 +756,26 @@ func _animate_entity(e: Dictionary, n: Node3D, dt: float) -> void:
 			n.rotate_y(dt * 0.05)
 
 
+## Auto chase distance: longer with booster attached so the full stack fits in frame.
+func chase_distance(sim: ShipSim) -> float:
+	var fixed := float(Settings.get_v("display", "chase_distance_m"))
+	if fixed > 1.0:
+		return fixed
+	return 75.0 if sim.booster_attached else 34.0
+
+
+## Approximate stack length (m) for framing checks (ship alone vs ship+booster).
+func chase_stack_length_m(sim: ShipSim) -> float:
+	return 42.0 if sim.booster_attached else 15.0
+
+
 ## Docking camera (nose) and arm camera transforms, relative to the floating origin.
 ## Chase camera behind and above the ship; near the ground it swings to the side so it
 ## never ends up underground (e.g. the rocket standing on the pad).
-func chase_xform(sim: ShipSim, dist: float) -> Transform3D:
+## Look-at is the stack mid-body so ship + attached booster stay in frame together.
+func chase_xform(sim: ShipSim, dist: float = -1.0) -> Transform3D:
+	if dist < 0.0:
+		dist = chase_distance(sim)
 	var fwd := sim.forward()
 	var up := sim.up_dir if sim.up_dir.length() > 0.5 else sim.basis.y
 	var off := -fwd * dist + sim.basis.y * dist * 0.26
@@ -768,9 +784,12 @@ func chase_xform(sim: ShipSim, dist: float) -> Transform3D:
 		if side.length() < 0.5:
 			side = up.cross(fwd).normalized()
 		off = side * dist * 0.9 + up * (dist * 0.15) - fwd.slide(up) * dist * 0.3
-	var target := fwd * (dist * 0.1)
+	# Aim at stack centre (booster hangs +Z when attached).
+	var aim_z := 8.0 if sim.booster_attached else 0.0
+	var target := sim.basis * Vector3(0.0, 0.0, aim_z) + fwd * (dist * 0.05)
 	var t := Transform3D(Basis.IDENTITY, off)
-	var look_up := up if absf((target - off).normalized().dot(up)) < 0.98 else sim.basis.y
+	var look_dir := (target - off)
+	var look_up := up if look_dir.length() > 1e-4 and absf(look_dir.normalized().dot(up)) < 0.98 else sim.basis.y
 	return t.looking_at(target, look_up)
 
 

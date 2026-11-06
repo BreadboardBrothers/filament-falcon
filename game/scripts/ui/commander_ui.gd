@@ -1806,7 +1806,8 @@ func _build_setup(page: Control) -> void:
 	ar.add_child(idall)
 	a.add_child(label("◀ ▶ cycles AUTO → screen 0, 1, 2 … Changes are saved; press APPLY to move the windows. Touch: run game/tools/setup_displays.sh (run.sh does it) to map the touchscreen to the KIDS' CONSOLE output.", 18, C_DIM))
 	var geo := [["monitor_width_m", "Window width m", 0.01], ["monitor_gap_m", "Gap between m", 0.01],
-		["eye_distance_m", "Eye distance m", 0.02], ["eye_height_m", "Eye height m", 0.02], ["toe_in_deg", "Toe-in deg", 1.0], ["view_scale", "View scale", 0.05]]
+		["eye_distance_m", "Eye distance m", 0.02], ["eye_height_m", "Eye height m", 0.02], ["toe_in_deg", "Toe-in deg", 1.0], ["view_scale", "View scale", 0.05],
+		["chase_bezel_bias", "Chase bezel bias", 0.05], ["chase_bezel_clear_m", "Chase bezel clear m", 0.01]]
 	var gg := grid(a, 2, 6)
 	for gdef in geo:
 		var row := HBoxContainer.new()
@@ -1823,6 +1824,7 @@ func _build_setup(page: Control) -> void:
 		row.add_child(gv)
 		row.add_child(button("+", func() -> void: Settings.set_v("display", key, snappedf(float(Settings.get_v("display", key)) + step, 0.001)), 22, 46))
 		live["geo_" + key] = func() -> void: gv.text = "%.3f" % float(Settings.get_v("display", key))
+	a.add_child(label("Chase bezel bias: 0 = rocket in the centre seam (hidden); ~0.55 frames it mid-right panel on twin 27\" windows. Cockpit panorama is unchanged.", 16, C_DIM))
 	var b := panel(h, "GRAPHICS / SOUND / LIGHTS", true, true)
 	var vrl := label("", 18, C_EVA)
 	b.add_child(vrl)

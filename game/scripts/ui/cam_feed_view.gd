@@ -69,9 +69,8 @@ func _process(_dt: float) -> void:
 		"ARM CAMERA":
 			cam.global_transform = w.arm_cam_xform()
 		_:
-			var sim: ShipSim = Game.sim
-			var back := sim.basis * Vector3(0, 6, 34)
-			cam.global_transform = Transform3D(Basis.IDENTITY, back).looking_at(Vector3.ZERO, sim.basis.y)
+			# Same chase framing as the OTW chase view (single-monitor feed: no bezel yaw).
+			cam.global_transform = w.chase_xform(Game.sim)
 
 
 ## HELMET CAM: the spacewalker's eyes. EVA DRONE: a little camera drone that hovers behind

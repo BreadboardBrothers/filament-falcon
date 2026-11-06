@@ -231,9 +231,18 @@ window post. Measure your rig and enter the numbers on **Commander → SETUP** (
 | `eye_height_m` | 0.0 | Eyes above (+) or below (−) the monitor centre. |
 | `toe_in_deg` | 0 | Angle each monitor is turned toward the centre. |
 | `view_scale` | 1.15 | >1 widens the field of view a bit (more dramatic, less "true"). |
+| `chase_bezel_bias` | 0.55 | Chase view only: slide the rocket off the bezel seam (0 = dead centre / hidden in the gap; 0.55 ≈ mid-right 27" panel; negative = left panel). Cockpit frusta unchanged. |
+| `chase_bezel_clear_m` | 0.08 | Extra metres past `gap/2` before bias starts counting into the panel. |
+| `chase_distance_m` | 0 | Chase camera distance; 0 = auto (34 m ship / 75 m with booster). |
 
 The panels are slightly curved, but the frustum assumes flat panels. At 27" the error is small. If straight
 lines bend at the inner edges, add a few degrees of toe-in.
+
+**Chase view on twin windows:** cockpit mode keeps the bezel as a window post (optical centre in the gap).
+Chase mode reuses those off-axis frusta, so a centred rocket would sit in the seam. The game yaws the
+shared chase eye by `chase_bezel_bias` / `chase_bezel_clear_m` so ship + booster clear the bezel on the
+paired monitors. Single-monitor / solo screenshot chase stays centred. Console **CHASE CAMERA** feed
+uses the same `chase_xform` (no bezel yaw). Tune on **Commander → SETUP**.
 
 ### Screen placement (X11 / Cinnamon)
 

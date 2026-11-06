@@ -33,6 +33,13 @@ const DEFAULTS := {
 		"eye_height_m": 0.0,       # eye above (+) / below (-) monitor centre
 		"toe_in_deg": 0.0,         # each monitor angled toward the centre
 		"view_scale": 1.15,        # >1 widens the field of view a little for drama
+		# Chase view (view_mode=1) on twin OTW monitors: the cockpit off-axis frusta put the
+		# optical centre in the physical bezel. Bias the chase aim so the rocket clears that seam.
+		# bias 0 = dead-centre (hidden in bezel); ~0.55 = mid-right panel (default, safe on 27" 1080p).
+		# Negative bias frames on the left panel. clear_m = extra metres past gap/2.
+		"chase_bezel_bias": 0.55,
+		"chase_bezel_clear_m": 0.08,
+		"chase_distance_m": 0.0,   # 0 = auto (34 ship / 75 with booster); else fixed chase distance
 		# Frame pacing. The two side monitors run at different refresh rates (144 Hz and 75 Hz)
 		# and the console at 60 Hz. One render loop drives all windows, so we cap the loop at
 		# max_fps and present every window with MAILBOX vsync (no tearing, never blocks on
@@ -155,7 +162,7 @@ func _parse_cli() -> void:
 
 
 func is_test_run() -> bool:
-	return cli.has("smoke-test") or cli.has("flight-test") or cli.has("screenshots") or cli.has("solar-test") or cli.has("booster-recovery-test")
+	return cli.has("smoke-test") or cli.has("flight-test") or cli.has("screenshots") or cli.has("solar-test") or cli.has("booster-recovery-test") or cli.has("chase-framing-test")
 
 
 func is_headless() -> bool:

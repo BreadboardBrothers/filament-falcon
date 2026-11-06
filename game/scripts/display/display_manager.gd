@@ -4,6 +4,8 @@ extends Node
 ## - LEFT / RIGHT: forward windows. Both cameras share the ship eye point and use
 ##   asymmetric (off-axis) frusta computed from the real monitor geometry, so the two
 ##   monitors read as one continuous windscreen (the bezel gap is a real "window post").
+##   Chase view (Game.view_mode=1) keeps those frusta but yaws the shared eye so the
+##   rocket clears the bezel seam (see chase_bezel_bias / chase_bezel_clear_m).
 ## - CONSOLE: the kids' touchscreen instrument panel (ConsoleUI), landscape or portrait.
 ## - COMMANDER: the grown-up's screen (CommanderUI). With only three screens it becomes a
 ##   tab on the console (Escape toggles it).
@@ -648,6 +650,58 @@ func frustum_for(side: int) -> Array:
 	return off_axis(screen_rect_for("left" if side < 0 else "right"))
 
 
+## Half-angle (rad) of the physical bezel gap as seen from the eye.
+func bezel_half_angle() -> float:
+	var gap := float(Settings.get_v("display", "monitor_gap_m"))
+	var D := maxf(float(Settings.get_v("display", "eye_distance_m")), 0.05)
+	return atan((gap * 0.5) / D)
+
+
+## Yaw (rad) applied in chase mode so the look-at (rocket) clears the bezel.
+## Positive = rocket frames toward the right panel. Zero when a single OTW view / solo shot.
+func chase_bezel_yaw() -> float:
+	if out_views.size() < 2:
+		return 0.0
+	if solo_view != "" and not solo_true:
+		return 0.0  # centred screenshot frustum — keep rocket framed
+	var gap := float(Settings.get_v("display", "monitor_gap_m"))
+	var W := float(Settings.get_v("display", "monitor_width_m"))
+	var D := maxf(float(Settings.get_v("display", "eye_distance_m")), 0.05)
+	var clear := maxf(float(Settings.get_v("display", "chase_bezel_clear_m")), 0.0)
+	var bias := clampf(float(Settings.get_v("display", "chase_bezel_bias")), -1.0, 1.0)
+	if absf(bias) < 1e-4:
+		return 0.0
+	var side := 1.0 if bias >= 0.0 else -1.0
+	var b := absf(bias)
+	# Lateral metres on the monitor plane: past gap/2 + clear, then into the panel by bias.
+	var x := side * (gap * 0.5 + clear + b * maxf(W * 0.5 - clear, 0.05))
+	return atan(x / D)
+
+
+## Eye-space X of a look direction after chase yaw (0 = optical centre / bezel).
+func chase_look_x_on_plane(yaw: float = NAN) -> float:
+	var y := chase_bezel_yaw() if is_nan(yaw) else yaw
+	var D := maxf(float(Settings.get_v("display", "eye_distance_m")), 0.05)
+	return tan(y) * D
+
+
+## True when |x| on the monitor plane clears the bezel gap (with optional margin).
+func clears_bezel(x_m: float, margin_m: float = 0.0) -> bool:
+	var gap := float(Settings.get_v("display", "monitor_gap_m"))
+	return absf(x_m) >= gap * 0.5 + margin_m
+
+
+func _chase_rig_basis(rig: Transform3D) -> Transform3D:
+	var yaw := chase_bezel_yaw()
+	if absf(yaw) < 1e-6:
+		return rig
+	# Yaw around the chase camera's up so the look-at slides off the bezel seam.
+	var up := rig.basis.y.normalized()
+	if up.length_squared() < 1e-8:
+		up = Vector3.UP
+	return Transform3D(Basis(up, yaw) * rig.basis, rig.origin)
+
+
 func _process(dt: float) -> void:
 	# Escape: show/hide the Commander tab on the console (three-screen rigs)
 	var esc := Input.is_physical_key_pressed(KEY_ESCAPE) and not Input.is_key_pressed(KEY_SHIFT)
@@ -658,19 +712,24 @@ func _process(dt: float) -> void:
 	if world == null:
 		return
 	near_now = minf(NEAR, EVA_NEAR) if Eva.active else NEAR
+	var chase := Game.view_mode == 1
+	var slew_cam := Game.slew.active and Game.slew.mode == "cam"
+	var rig := world.rig_xform
+	if chase and not slew_cam:
+		rig = _chase_rig_basis(rig)
 	for n: String in out_views:
 		var cam: Camera3D = cams[n]
 		var f := off_axis(screen_rect_for(n))
 		if n == solo_view and not solo_true:
 			# single-view screenshot: same field of view, but centred straight ahead
 			f = [Basis.IDENTITY, f[1], Vector2.ZERO]
-		cam.global_transform = world.rig_xform * Transform3D(f[0], Vector3.ZERO)
+		cam.global_transform = rig * Transform3D(f[0], Vector3.ZERO)
 		if Settings.cli.has("persp"):
 			cam.set_perspective(70.0, near_now, FAR)
 		else:
 			cam.set_frustum(f[1], f[2], near_now, FAR)
-		# Hide the Falcon's own hull from the cockpit eye point
-		cam.cull_mask = 0xFFFFF if (Game.view_mode == 1 or (Game.slew.active and Game.slew.mode == "cam")) else (0xFFFFF & ~WorldView.SHIP_LAYER)
+		# Hide the Falcon's own hull from the cockpit eye point; chase / cam-slew must see it.
+		cam.cull_mask = 0xFFFFF if (chase or slew_cam) else (0xFFFFF & ~WorldView.SHIP_LAYER)
 
 
 ## Screenshot / demo helper (dev mode only): show one view full-window, or "" for the tiles.
