@@ -240,6 +240,7 @@ static func booster() -> Node3D:
 	for i in 12:
 		var a4 := TAU * i / 12.0 + 0.1
 		positions.append(Vector3(cos(a4), sin(a4), 0) * 1.75)
+	var nozzles: Array = []
 	for i in positions.size():
 		var p: Vector3 = positions[i]
 		var z_off := 0.15 if i == 0 else (0.05 if i <= 6 else 0.0)
@@ -248,23 +249,12 @@ static func booster() -> Node3D:
 		var add_pos := p + Vector3(0, 0, aft_z + z_off)
 		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.14, 0.14, 0.2, 12), metal, add_pos + Vector3(0, 0, -0.55), rx))
 		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.18, 0.18, 0.05, 12), cool, add_pos + Vector3(0, 0, -0.4), rx))
-		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.15, r_bot, h, 16), bell, add_pos, rx))
-	var plume_mat := ProcGen.shader_mat("res://shaders/plume.gdshader", {"core_color": Color(1.0, 0.7, 0.35)})
-	var pm := ProcGen.exhaust_mesh()
-	var pivot := Node3D.new()
-	pivot.name = "Plume"
-	pivot.position = Vector3(0, 0, aft_z + 0.875)
-	pivot.rotation = Vector3(-PI * 0.5, 0, 0)
+		var engine := ProcGen.mesh_node(ProcGen.nozzle_mesh(0.15, r_bot, h, 16), bell, add_pos, Vector3(-PI * 0.5, 0, 0))
+		engine.name = "Engine" + str(i)
+		root.add_child(engine)
+		nozzles.append({"pos": add_pos + Vector3(0, 0, h * 0.5 + 0.01), "radius": r_bot, "engine": engine.name})
+	var pivot := ProcGen.exhaust_cluster(nozzles)
 	root.add_child(pivot)
-	var plume := ProcGen.mesh_node(pm, plume_mat)
-	plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	pivot.add_child(plume)
-	pivot.set_meta("mat", plume_mat)
-	var haze_mat := ProcGen.shader_mat("res://shaders/heat_haze.gdshader")
-	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3.ZERO, Vector3.ZERO, Vector3(1.4, 0.4, 1.4))
-	haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	pivot.add_child(haze)
-	pivot.set_meta("haze", haze_mat)
 	var l := OmniLight3D.new()
 	l.name = "Light"
 	l.position = Vector3(0, 0, aft_z + 4.5)

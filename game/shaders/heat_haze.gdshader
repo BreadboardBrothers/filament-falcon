@@ -6,6 +6,7 @@ render_mode unshaded, cull_disabled, depth_draw_never, shadows_disabled, fog_dis
 #include "res://shaders/noise.gdshaderinc"
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform float vacuum = 0.0;
 uniform float strength = 0.0;
 uniform float time = 0.0;
 
@@ -13,6 +14,9 @@ varying vec3 lp;
 
 void vertex() {
 	lp = VERTEX;
+	// Radius is fixed at the actual nozzle lip. Vacuum fans out ONLY aft.
+	float along = clamp(-VERTEX.y, 0.0, 1.0);
+	VERTEX.xz *= 1.0 + (1.0 + vacuum * 6.0) * pow(along, 1.4);
 }
 
 void fragment() {
@@ -23,5 +27,5 @@ void fragment() {
 	float amt = strength * fres * (1.0 - along) * 0.012;
 	ALBEDO = textureLod(screen_tex, SCREEN_UV + n * amt, 0.0).rgb;
 	// Fade the proxy as well as its refraction toward the tail.
-	ALPHA = clamp(strength * fres * 1.5, 0.0, 1.0) * pow(1.0 - along, 2.0);
+	ALPHA = clamp(strength * fres * 1.5, 0.0, 1.0) * pow(1.0 - along, 2.0) * smoothstep(0.0, 0.03, along);
 }

@@ -82,7 +82,7 @@ const SHIP_LAYER := 1 << 10
 func _tag_one(n: Node) -> void:
 	# hull meshes only: effects you should see out of the window (plume, laser, beam,
 	# plasma sheath), lights and particles stay on the default layer
-	if n is MeshInstance3D and n != ship.plume and n != ship.laser and n != ship.beam and n != ship.plasma:
+	if n is MeshInstance3D and (ship.plume == null or not ship.plume.is_ancestor_of(n)) and n != ship.laser and n != ship.beam and n != ship.plasma:
 		(n as MeshInstance3D).layers = SHIP_LAYER
 
 
@@ -694,17 +694,8 @@ func _animate_entity(e: Dictionary, n: Node3D, dt: float) -> void:
 				thr_frac = float(e.get("thrust_frac", 0.0))
 				on = thr_frac > 0.04
 			if pl:
-				pl.visible = on
-				if on:
-					var vac := 1.0 - clampf(Game.sim.density_now / 0.4, 0.0, 1.0)
-					pl.scale = Vector3(2.2 + vac * 3.0, 30.0 + vac * 25.0, 2.2 + vac * 3.0)
-					var pm: ShaderMaterial = pl.get_meta("mat")
-					pm.set_shader_parameter("throttle", thr_frac)
-					pm.set_shader_parameter("vacuum", vac)
-					pm.set_shader_parameter("time", _t)
-					var hz: ShaderMaterial = pl.get_meta("haze")
-					hz.set_shader_parameter("strength", thr_frac * (1.0 - 0.8 * vac))
-					hz.set_shader_parameter("time", _t)
+				var vac := 1.0 - clampf(Game.sim.density_now / 0.4, 0.0, 1.0)
+				ProcGen.update_exhaust(pl, thr_frac if on else 0.0, vac, _t, 30.0 + vac * 25.0)
 			var l: OmniLight3D = n.get_node_or_null("Light")
 			if l:
 				l.light_energy = 10.0 * thr_frac if on else 0.0

@@ -14,6 +14,9 @@ varying vec3 lp;
 
 void vertex() {
 	lp = VERTEX;
+	// Radius is fixed at the actual nozzle lip. Vacuum fans out ONLY aft.
+	float along = clamp(-VERTEX.y, 0.0, 1.0);
+	VERTEX.xz *= 1.0 + (1.0 + vacuum * 6.0) * pow(along, 1.4);
 }
 
 void fragment() {
@@ -25,5 +28,5 @@ void fragment() {
 	float flicker = 0.8 + 0.4 * vnoise(vec3(lp.x * 3.0, along * 12.0 - time * 30.0, lp.z * 3.0));
 	float fade = pow(1.0 - along, 1.6 + vacuum * 0.8);
 	vec3 col = mix(core_color, edge_color, along * 0.6 + vacuum * 0.4);
-	ALBEDO = col * fres * fade * diamonds * flicker * throttle * (3.5 - vacuum * 1.5);
+	ALBEDO = col * fres * fade * smoothstep(0.0, 0.02, along) * diamonds * flicker * throttle * (3.5 - vacuum * 1.5);
 }

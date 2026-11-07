@@ -106,3 +106,13 @@ the wrong along-plume coordinates. Both effects now share nozzle-origin geometry
 haze opacity fades toward the tail. World and SOLAR use the same models, not a
 SOLAR-only exhaust visibility workaround. `--solar-test` checks actual vertices at
 low/full thrust, atmosphere/vacuum, rotation and scene scaling.
+
+### Nozzle-sized exhaust
+Ship exhaust now uses six individual open jets (three sea-level and three vacuum),
+and the booster uses its nineteen modelled engine exits. Each root stays centred
+on its actual bell lip at the bell radius, independent of throttle/vacuum; only
+the downstream envelope spreads and lengthens. The capped cluster-wide disk and
+always-on hot plate are gone. Heat haze follows the same small roots with a soft
+start. Shared meshes/materials keep this procedural (no particles or downloads).
+Engine-off and attached upper-stage engines remain dark. Verify in SOLAR → FALCON
+→ ATTACH, close zoom, then vary throttle; stage and follow BOOSTER to compare.

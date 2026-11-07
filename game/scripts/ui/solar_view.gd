@@ -1210,19 +1210,8 @@ func _sync_free_booster(s: float, dt: float) -> void:
 	var on := thr_frac > 0.04
 	var pl: Node3D = _free_booster_model.get_node_or_null("Plume") if _free_booster_model else null
 	if pl:
-		pl.visible = on
-		if on:
-			var vac := 1.0 - clampf((Game.sim.density_now if Game and Game.sim else 0.0) / 0.4, 0.0, 1.0)
-			pl.scale = Vector3(2.2 + vac * 3.0, 30.0 + vac * 25.0, 2.2 + vac * 3.0)
-			if pl.has_meta("mat"):
-				var pm: ShaderMaterial = pl.get_meta("mat")
-				pm.set_shader_parameter("throttle", thr_frac)
-				pm.set_shader_parameter("vacuum", vac)
-				pm.set_shader_parameter("time", _ship_anim_t)
-			if pl.has_meta("haze"):
-				var hz: ShaderMaterial = pl.get_meta("haze")
-				hz.set_shader_parameter("strength", thr_frac * (1.0 - 0.8 * vac))
-				hz.set_shader_parameter("time", _ship_anim_t)
+		var vac := 1.0 - clampf((Game.sim.density_now if Game and Game.sim else 0.0) / 0.4, 0.0, 1.0)
+		ProcGen.update_exhaust(pl, thr_frac if on else 0.0, vac, _ship_anim_t, 30.0 + vac * 25.0)
 	var l: OmniLight3D = _free_booster_model.get_node_or_null("Light") if _free_booster_model else null
 	if l:
 		l.light_energy = 10.0 * thr_frac if on else 0.0
@@ -1251,20 +1240,9 @@ func _sync_booster(sim: ShipSim) -> void:
 	var pl: Node3D = _ship_booster.get_node_or_null("Plume")
 	var firing := on and sim.thrust_now > 0.0
 	if pl:
-		pl.visible = firing
-		if firing:
-			var thr := sim.thrust_now / maxf(sim.booster_thrust, 1.0)
-			var vac := 1.0 - clampf(sim.density_now / 0.4, 0.0, 1.0)
-			pl.scale = Vector3(2.2 + vac * 3.0, 30.0 + vac * 25.0, 2.2 + vac * 3.0)
-			if pl.has_meta("mat"):
-				var pm: ShaderMaterial = pl.get_meta("mat")
-				pm.set_shader_parameter("throttle", thr)
-				pm.set_shader_parameter("vacuum", vac)
-				pm.set_shader_parameter("time", _ship_anim_t)
-			if pl.has_meta("haze"):
-				var hz: ShaderMaterial = pl.get_meta("haze")
-				hz.set_shader_parameter("strength", thr * (1.0 - 0.8 * vac))
-				hz.set_shader_parameter("time", _ship_anim_t)
+		var thr := sim.thrust_now / maxf(sim.booster_thrust, 1.0) if firing else 0.0
+		var vac := 1.0 - clampf(sim.density_now / 0.4, 0.0, 1.0)
+		ProcGen.update_exhaust(pl, thr, vac, _ship_anim_t, 30.0 + vac * 25.0)
 	var l: OmniLight3D = _ship_booster.get_node_or_null("Light")
 	if l:
 		l.light_energy = 10.0 * (sim.thrust_now / maxf(sim.booster_thrust, 1.0)) if firing else 0.0

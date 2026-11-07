@@ -111,6 +111,12 @@ func _exhaust_bounds(mesh: MeshInstance3D, pivot: Node3D, nozzle_z: float, label
 	# Rotate/scale like World/SOLAR; undo the parent to test the same body axis.
 	var parent := Transform3D(Basis(Vector3(0.3, 0.8, 0.1).normalized(), 1.2).scaled(Vector3.ONE * 500.0), Vector3(123, 456, -789))
 	for vertex in vertices:
+		# Same radial-only displacement as both GPU shaders, including vacuum maximum.
+		var material := mesh.material_override as ShaderMaterial
+		var vacuum := float(material.get_shader_parameter("vacuum"))
+		var spread := 1.0 + (1.0 + vacuum * 6.0) * pow(clampf(-vertex.y, 0, 1), 1.4)
+		vertex.x *= spread
+		vertex.z *= spread
 		var local := pivot.transform * mesh.transform * vertex
 		var recovered := parent.affine_inverse() * (parent * local)
 		finite = finite and recovered.is_finite()
@@ -121,45 +127,86 @@ func _exhaust_bounds(mesh: MeshInstance3D, pivot: Node3D, nozzle_z: float, label
 	return max_z - min_z
 
 
+func _check_jet_cluster(root: Node3D, model: Node3D, label: String) -> void:
+	var jets: Array = root.get_meta("jets")
+	var hazes: Array = root.get_meta("hazes")
+	var shared := true
+	for i in jets.size():
+		shared = shared and jets[i].mesh == jets[0].mesh and hazes[i].mesh == jets[0].mesh
+		shared = shared and jets[i].material_override == root.get_meta("mat") and hazes[i].material_override == root.get_meta("haze")
+	_check(shared, label + " jets/haze share mesh and materials")
+	for i in jets.size():
+		var jet: MeshInstance3D = jets[i]
+		var nozzle: Dictionary = jet.get_meta("nozzle")
+		var engine := model.get_node(NodePath(str(nozzle["engine"]))) as MeshInstance3D
+		var bell_vertices: PackedVector3Array = engine.mesh.get_mesh_arrays()[Mesh.ARRAY_VERTEX]
+		var lip_z := -INF
+		for vertex in bell_vertices:
+			lip_z = maxf(lip_z, (engine.transform * vertex).z)
+		var actual_radius := 0.0
+		for vertex in bell_vertices:
+			var body := engine.transform * vertex
+			if absf(body.z - lip_z) < 0.001:
+				actual_radius = maxf(actual_radius, Vector2(body.x - engine.position.x, body.y - engine.position.y).length())
+		_check(absf(jet.position.z - lip_z - 0.01) < 0.001 and absf(jet.scale.x - actual_radius) < 0.001,
+			label + " jet %d matches actual aft bell lip/radius" % i)
+		_check(Vector2(jet.position.x - engine.position.x, jet.position.y - engine.position.y).length() < 0.001,
+			label + " jet %d centred on its engine" % i)
+		var vertices: PackedVector3Array = jet.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var no_caps := true
+		for vertex in vertices:
+			no_caps = no_caps and Vector2(vertex.x, vertex.z).length() > 0.99
+		_check(no_caps, label + " jet %d has no solid end-cap disk" % i)
+		_exhaust_bounds(jet, root, jet.position.z, label + " jet %d" % i)
+		# Haze uses exactly the same root radius/position, not a giant cluster proxy.
+		var haze: MeshInstance3D = hazes[i]
+		_check(haze.position.is_equal_approx(jet.position) and is_equal_approx(haze.scale.x, jet.scale.x), label + " haze root matches lip")
+		_exhaust_bounds(haze, root.get_node("Haze"), jet.position.z, label + " haze %d" % i)
+		# Reproduce shader radial expansion: zero spread at root regardless of vacuum;
+		# the configured custom AABB covers the maximum 8x downstream envelope.
+		_check(jet.custom_aabb.end.x >= 8.0, label + " expanded shader bounds retained for culling")
+
+
 func _exhaust_tests(sv: SolarView) -> void:
 	var sim := Game.sim
 	var old_thrust := sim.thrust_now
 	var old_density := sim.density_now
 	var old_attached := sim.booster_attached
 	var ship := sv._ship_model
-	var pivot := ship.get_node("PlumePivot") as Node3D
-	var haze := pivot.get_node("Haze") as MeshInstance3D
 	var bp := sv._ship_booster.get_node("Plume") as Node3D
+	_check((ship.plume.get_meta("jets") as Array).size() == 6, "ship has six individual nozzle jets")
+	_check((bp.get_meta("jets") as Array).size() == 19, "booster has nineteen individual nozzle jets")
 	for vac in [false, true]:
 		var last_length := 0.0
-		for throttle in [0.05, 0.5, 1.0]:
+		for throttle in [0.05, 1.0]:
 			sim.density_now = 0.0 if vac else 0.4
 			sim.thrust_now = sim.main_thrust * throttle
 			sim.booster_attached = false
 			ship.animate(Game, 0.0)
-			var length := _exhaust_bounds(ship.plume, pivot, 9.175, "ship %.2f vacuum=%s" % [throttle, vac])
-			_check(length > last_length, "ship throttle length grows aft monotonically")
-			last_length = length
-			_exhaust_bounds(haze, pivot, 9.175, "ship haze %.2f vacuum=%s" % [throttle, vac])
-			_check(ship.plume.visible and haze.visible, "thrust keeps exhaust and haze visible")
+			_check_jet_cluster(ship.plume, ship, "ship %.2f vacuum=%s" % [throttle, vac])
+			var jet: MeshInstance3D = ship.plume.get_meta("jets")[0]
+			_check(jet.scale.y > last_length, "ship length grows aft with throttle")
+			last_length = jet.scale.y
+			_check(ship.plume.visible, "thrust keeps ship jets visible")
 			sim.booster_attached = true
+			ship.animate(Game, 0.0)
+			_check(not ship.plume.visible, "attached stage keeps ship engines off")
 			sim.thrust_now = sim.booster_thrust * throttle
 			sv._sync_booster(sim)
-			for child in bp.get_children():
-				if child is MeshInstance3D:
-					_exhaust_bounds(child, bp, 12.375, "booster plume/haze %.2f vacuum=%s" % [throttle, vac])
+			_check_jet_cluster(bp, sv._ship_booster, "booster %.2f vacuum=%s" % [throttle, vac])
 			var bm: ShaderMaterial = bp.get_meta("mat")
-			_check(absf(float(bm.get_shader_parameter("throttle")) - throttle) < 0.001, "booster shader tracks live thrust")
+			_check(absf(float(bm.get_shader_parameter("throttle")) - throttle) < 0.001, "booster shader tracks thrust")
 	sim.booster_attached = false
 	sim.thrust_now = 0.0
 	ship.animate(Game, 0.0)
-	_check(not ship.plume.visible and not haze.visible, "zero thrust hides ship exhaust")
+	ProcGen.update_exhaust(bp, 0, 0, 0, 30)
+	_check(not ship.plume.visible and not bp.visible, "engine off hides entire exhaust clusters")
 	sim.thrust_now = old_thrust
 	sim.density_now = old_density
 	sim.booster_attached = old_attached
 
 
-func _exhaust_render_test() -> void:
+func _exhaust_render_test(sv: SolarView) -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	var view := SubViewport.new()
@@ -175,16 +222,13 @@ func _exhaust_render_test() -> void:
 	view.add_child(camera)
 	camera.look_at(Vector3(0, 0, 22))
 	camera.current = true
-	var pivot := Node3D.new()
-	pivot.position.z = 9.175
-	pivot.rotation.x = -PI * 0.5
-	view.add_child(pivot)
-	var material := ProcGen.shader_mat("res://shaders/plume.gdshader", {"throttle": 1.0})
-	var mesh := ProcGen.mesh_node(ProcGen.exhaust_mesh(), material)
-	pivot.add_child(mesh)
+	var nozzles: Array = []
+	for jet: MeshInstance3D in sv._ship_model.plume.get_meta("jets"):
+		nozzles.append(jet.get_meta("nozzle"))
+	var cluster := ProcGen.exhaust_cluster(nozzles)
+	view.add_child(cluster)
 	for vacuum in [0.0, 1.0]:
-		material.set_shader_parameter("vacuum", vacuum)
-		mesh.scale = Vector3(1.0 + vacuum * 2.5, 23.0 + vacuum * 10.0, 1.0 + vacuum * 2.5)
+		ProcGen.update_exhaust(cluster, 1.0, vacuum, 0, 23.0 + vacuum * 10.0)
 		await _frames(3)
 		var pixels := view.get_texture().get_image()
 		var bright := 0
@@ -195,7 +239,7 @@ func _exhaust_render_test() -> void:
 				var pixel := pixels.get_pixel(x, y)
 				if maxf(pixel.r, maxf(pixel.g, pixel.b)) > 0.03:
 					bright += 1
-					if body_z < 8.5:
+					if body_z < 7.9:
 						upstream += 1
 		_check(bright > 10 and upstream == 0, "rendered full-throttle exhaust vacuum=%.1f: visible aft, no hull-side glow" % vacuum)
 	view.queue_free()
@@ -268,7 +312,7 @@ func _run() -> void:
 		_check(bad == null, "soft _load_tex rejects HTML-as-jpg")
 
 	_exhaust_tests(sv)
-	await _exhaust_render_test()
+	await _exhaust_render_test(sv)
 	await _galaxy_tests(sv)
 	_check(sv.show_labels == true, "LABELS default on")
 	_check(sv.exaggerated_sun == false, "EXAG. SUN default off")

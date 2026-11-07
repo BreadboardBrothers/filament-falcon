@@ -11,8 +11,10 @@ static func exhaust_mesh() -> ArrayMesh:
 	cylinder.top_radius = 1.0
 	cylinder.bottom_radius = 1.0
 	cylinder.height = 1.0
-	cylinder.radial_segments = 24
+	cylinder.radial_segments = 16
 	cylinder.rings = 8
+	cylinder.cap_top = false
+	cylinder.cap_bottom = false
 	var arrays := cylinder.get_mesh_arrays()
 	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 	for i in vertices.size():
@@ -20,7 +22,73 @@ static func exhaust_mesh() -> ArrayMesh:
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	# Shader expands only radially downstream, up to 8x in vacuum.
+	mesh.custom_aabb = AABB(Vector3(-8, -1, -8), Vector3(16, 1, 16))
 	return mesh
+
+
+## Open Raptor nozzle: throat toward -Z after -PI/2 rotation, exit toward +Z.
+static func nozzle_mesh(throat: float, radius: float, height: float, segments: int) -> CylinderMesh:
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = throat
+	mesh.bottom_radius = radius
+	mesh.height = height
+	mesh.radial_segments = segments
+	mesh.cap_bottom = false
+	return mesh
+
+
+## One shared mesh/material per cluster; fixed lip-sized roots, no per-frame allocation.
+static func exhaust_cluster(nozzles: Array) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Plume"
+	var unit := exhaust_mesh()
+	var material := shader_mat("res://shaders/plume.gdshader")
+	var haze_material := shader_mat("res://shaders/heat_haze.gdshader")
+	root.set_meta("mat", material)
+	root.set_meta("haze", haze_material)
+	var haze := Node3D.new()
+	haze.name = "Haze"
+	root.add_child(haze)
+	var jets: Array[MeshInstance3D] = []
+	var hazes: Array[MeshInstance3D] = []
+	for i in nozzles.size():
+		var nozzle: Dictionary = nozzles[i]
+		var radius: float = nozzle["radius"]
+		for is_haze in [false, true]:
+			var jet := mesh_node(unit, haze_material if is_haze else material, nozzle["pos"], Vector3(-PI * 0.5, 0, 0), Vector3(radius, 1, radius))
+			jet.name = ("Haze" if is_haze else "Jet") + str(i)
+			jet.custom_aabb = unit.custom_aabb
+			jet.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			jet.set_meta("nozzle", nozzle)
+			jet.set_meta("length_scale", 1.0 if nozzle.get("vac", false) else 0.7)
+			if is_haze:
+				haze.add_child(jet)
+				hazes.append(jet)
+			else:
+				root.add_child(jet)
+				jets.append(jet)
+	root.set_meta("jets", jets)
+	root.set_meta("hazes", hazes)
+	root.visible = false
+	return root
+
+
+static func update_exhaust(root: Node3D, throttle: float, vacuum: float, time: float, length: float) -> void:
+	root.visible = throttle > 0.01
+	(root.get_node("Haze") as Node3D).visible = root.visible
+	var material: ShaderMaterial = root.get_meta("mat")
+	material.set_shader_parameter("throttle", throttle)
+	material.set_shader_parameter("vacuum", vacuum)
+	material.set_shader_parameter("time", time)
+	var haze: ShaderMaterial = root.get_meta("haze")
+	haze.set_shader_parameter("strength", clampf(throttle, 0, 1) * (1.0 - 0.8 * vacuum))
+	haze.set_shader_parameter("vacuum", vacuum)
+	haze.set_shader_parameter("time", time)
+	for jet: MeshInstance3D in root.get_meta("jets"):
+		jet.scale.y = length * float(jet.get_meta("length_scale"))
+	for jet: MeshInstance3D in root.get_meta("hazes"):
+		jet.scale.y = length * float(jet.get_meta("length_scale")) * 0.6
 
 
 static func mat(color: Color, metallic: float = 0.0, roughness: float = 0.6, emission: Color = Color.BLACK, emission_energy: float = 1.0) -> StandardMaterial3D:

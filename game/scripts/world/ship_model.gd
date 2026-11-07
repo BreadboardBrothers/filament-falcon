@@ -7,7 +7,7 @@ extends Node3D
 
 var hull_mat: ShaderMaterial
 var plume_mat: ShaderMaterial
-var plume: MeshInstance3D
+var plume: Node3D
 var engine_light: OmniLight3D
 var door_l: Node3D
 var door_r: Node3D
@@ -94,37 +94,31 @@ func _build() -> void:
 	var cool := ProcGen.mat(Color(0.55, 0.15, 0.08), 0.4, 0.45)  # regenerative cooling ring tint
 	# Aft heat-shield dome (slightly forward of bells so it never shares a plane with nozzles)
 	add_child(ProcGen.mesh_node(ProcGen.cyl(1.55, 1.55, 0.18, 48), metal, Vector3(0, 0, 7.15), Vector3(PI * 0.5, 0, 0)))
-	var hot := ProcGen.bump_priority(ProcGen.glow_mat(Color(1.0, 0.45, 0.15), 2.2), 3)
-	add_child(ProcGen.mesh_node(ProcGen.cyl(0.55, 0.55, 0.04, 24), hot, Vector3(0, 0, 7.28), Vector3(PI * 0.5, 0, 0)))
+	var nozzles: Array = []
 	for k in 3:
 		var ang := TAU * k / 3.0 + 0.15
 		var p_sl := Vector3(cos(ang) * 0.48, sin(ang) * 0.48 * EvaScenarios.YS, 7.85)
 		# SL Raptor 3: short nozzle + cooling band + throat (stacked with gaps)
 		add_child(ProcGen.mesh_node(ProcGen.cyl(0.16, 0.16, 0.22, 16), metal, p_sl + Vector3(0, 0, -0.35), Vector3(PI * 0.5, 0, 0)))
 		add_child(ProcGen.mesh_node(ProcGen.cyl(0.2, 0.2, 0.06, 16), cool, p_sl + Vector3(0, 0, -0.2), Vector3(PI * 0.5, 0, 0)))
-		add_child(ProcGen.mesh_node(ProcGen.cyl(0.17, 0.36, 0.7, 24), bell_sl, p_sl, Vector3(PI * 0.5, 0, 0)))
+		var sl := ProcGen.mesh_node(ProcGen.nozzle_mesh(0.17, 0.36, 0.7, 24), bell_sl, p_sl, Vector3(-PI * 0.5, 0, 0))
+		sl.name = "EngineSL" + str(k)
+		add_child(sl)
+		nozzles.append({"pos": p_sl + Vector3(0, 0, 0.35 + 0.01), "radius": 0.36, "engine": sl.name})
 		var ang2 := ang + PI / 3.0
 		var p_v := Vector3(cos(ang2) * 1.12, sin(ang2) * 1.12 * EvaScenarios.YS, 8.35)
 		# Vac Raptor 3: longer, wider nozzle; cooling ring inset from bell lip
 		add_child(ProcGen.mesh_node(ProcGen.cyl(0.2, 0.2, 0.28, 16), metal, p_v + Vector3(0, 0, -0.55), Vector3(PI * 0.5, 0, 0)))
 		add_child(ProcGen.mesh_node(ProcGen.cyl(0.26, 0.26, 0.07, 16), cool, p_v + Vector3(0, 0, -0.35), Vector3(PI * 0.5, 0, 0)))
-		add_child(ProcGen.mesh_node(ProcGen.cyl(0.22, 0.72, 1.55, 28), bell_vac, p_v, Vector3(PI * 0.5, 0, 0)))
-	plume_mat = ProcGen.shader_mat("res://shaders/plume.gdshader")
-	var pm := ProcGen.exhaust_mesh()
-	plume = ProcGen.mesh_node(pm, plume_mat)
-	plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var plume_pivot := Node3D.new()
-	plume_pivot.position = Vector3(0, 0, 9.175)  # past vac bell lips — no coplanar overlap
-	plume_pivot.rotation = Vector3(-PI * 0.5, 0, 0)
-	add_child(plume_pivot)
-	plume.position = Vector3.ZERO
-	plume_pivot.add_child(plume)
-	plume_pivot.name = "PlumePivot"
-	haze_mat = ProcGen.shader_mat("res://shaders/heat_haze.gdshader")
-	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3.ZERO, Vector3.ZERO, Vector3(1.15, 1.0, 1.15))
-	haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	haze.name = "Haze"
-	plume_pivot.add_child(haze)
+		var vac := ProcGen.mesh_node(ProcGen.nozzle_mesh(0.22, 0.72, 1.55, 28), bell_vac, p_v, Vector3(-PI * 0.5, 0, 0))
+		vac.name = "EngineVac" + str(k)
+		add_child(vac)
+		nozzles.append({"pos": p_v + Vector3(0, 0, 0.775 + 0.01), "radius": 0.72, "vac": true, "engine": vac.name})
+	plume = ProcGen.exhaust_cluster(nozzles)
+	plume.name = "PlumePivot"  # stable external anchor; individual jets are its children
+	add_child(plume)
+	plume_mat = plume.get_meta("mat")
+	haze_mat = plume.get_meta("haze")
 	_greebles(metal)
 	engine_light = OmniLight3D.new()
 	engine_light.position = Vector3(0, 0, 11.2)
@@ -339,16 +333,7 @@ func animate(g: Node, dt: float) -> void:
 	if sim.booster_attached:
 		thr_frac = 0.0
 	var vac := 1.0 - clampf(sim.density_now / 0.4, 0.0, 1.0)
-	plume.visible = thr_frac > 0.01
-	plume.scale = Vector3(1.0 + vac * 2.5, 9.0 + thr_frac * 14.0 + vac * 10.0, 1.0 + vac * 2.5)
-	plume_mat.set_shader_parameter("throttle", thr_frac * (1.3 if sim.boost else 1.0))
-	haze_mat.set_shader_parameter("strength", clampf(thr_frac, 0.0, 1.0) * (1.0 - 0.8 * vac))
-	haze_mat.set_shader_parameter("time", _t)
-	plume_mat.set_shader_parameter("vacuum", vac)
-	plume_mat.set_shader_parameter("time", _t)
-	var haze: Node3D = plume.get_parent().get_node("Haze")
-	haze.visible = thr_frac > 0.01
-	haze.scale = Vector3(1.6 + vac * 2.0, 6.0 + thr_frac * 8.0, 1.6 + vac * 2.0)
+	ProcGen.update_exhaust(plume, thr_frac * (1.3 if sim.boost else 1.0), vac, _t, 9.0 + thr_frac * 14.0 + vac * 10.0)
 	engine_light.light_energy = thr_frac * 6.0 * (0.85 + 0.15 * sin(_t * 40.0))
 	smoke.emitting = thr_frac > 0.05 and sim.density_now > 0.05
 	if smoke.emitting:
