@@ -65,3 +65,15 @@ Booster RTLS / Mechazilla catch: `--booster-recovery-test` (lean FSM → caught 
 - `game/scripts/solar/ephemeris.gd`, `game/scripts/ui/solar_view.gd`
 - `game/shaders/solar/body.gdshader`, `ring.gdshader`
 - `game/tools/fetch_solar_assets.sh`, `build_moon_catalog.py`
+
+## Rendering precision regression
+SOLAR is constructed while the Commander tab may still be hidden. The old startup
+clips (near 0.1, far 10,000,000) produced a **zero far-plane normal** in Godot's
+float32 projection, even with sun shadows disabled. Godot's light culler cannot
+intersect that plane to form frustum corners (`create_frustum_points:682`).
+Startup now uses the same bounded clips as active SOLAR; far/near is capped at
+1,000,000 and the viewport renders only when visible. Close ship/booster metre
+scaling and local engine lights remain; world shadows and cockpit projections
+are not disabled or changed. `--solar-test` checks all eight actual projection
+plane intersections, including hidden initialization, planet/vehicle zooms and
+twin OTW frusta. A headless test proves the matrix defect, not a GPU reproduction.

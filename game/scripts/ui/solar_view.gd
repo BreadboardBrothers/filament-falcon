@@ -16,7 +16,7 @@ const AU_KM := 149597870.7
 const DAY := 86400.0
 const C_KM_S := 299792.458
 const SCENE_REF := 1000.0
-const FAR_RATIO_MAX := 5.0e6
+const FAR_RATIO_MAX := 1.0e6
 const HALF_SCREEN_FRAC := 0.5
 const SHIP_ID := "ship"
 const BOOSTER_ID := "booster"
@@ -136,7 +136,7 @@ func _ready() -> void:
 	_load_sky_catalogs()
 	_vp = SubViewport.new()
 	_vp.own_world_3d = true
-	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	_vp.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
 	_vp.size = Vector2i(16, 16)
 	var host := SubViewportContainer.new()
 	host.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -150,8 +150,13 @@ func _ready() -> void:
 	_cam = Camera3D.new()
 	_cam.current = true
 	_cam.fov = 70.0
-	_cam.near = 0.1
-	_cam.far = 1.0e7
+	# SOLAR may be built while its tab is hidden: _process then returns without
+	# updating clips. 0.1 / 1e7 rounded the projection far plane to ZERO in
+	# float32, making RenderingLightCuller::create_frustum_points fail every frame.
+	# Start with the same precision-bounded clips used by the visible view.
+	var initial_clips := clip_planes_for_dist(_dist)
+	_cam.near = initial_clips["near"]
+	_cam.far = initial_clips["far"]
 	_root.add_child(_cam)
 	_world_env = WorldEnvironment.new()
 	_env = Environment.new()

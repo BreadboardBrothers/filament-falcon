@@ -15,12 +15,42 @@ func _check(cond: bool, what: String) -> void:
 		_ok = false
 
 
+# Godot's float32 matrix, not just nominal near/far: these are the eight
+# intersections used by RenderingLightCuller::create_frustum_points.
+func _check_projection(proj: Projection, label: String) -> void:
+	var planes: Array[Plane] = []
+	var valid := true
+	for i in 6:
+		var plane := proj.get_projection_plane(i)
+		planes.append(plane)
+		valid = valid and plane.normal.is_finite() and is_finite(plane.d) and plane.normal.length() > 0.99
+	for depth in [Projection.PLANE_NEAR, Projection.PLANE_FAR]:
+		for side in [Projection.PLANE_LEFT, Projection.PLANE_RIGHT]:
+			for vertical in [Projection.PLANE_TOP, Projection.PLANE_BOTTOM]:
+				var corner = planes[depth].intersect_3(planes[side], planes[vertical])
+				valid = valid and corner != null and (corner as Vector3).is_finite()
+	_check(valid, label + " has finite nondegenerate frustum corners")
+
+
+func _check_local_lights(root: Node) -> void:
+	for child in root.get_children():
+		if child is OmniLight3D:
+			var light := child as OmniLight3D
+			_check(is_finite(light.omni_range) and light.omni_range > 0.0 and light.omni_range <= 300.0,
+				"SOLAR local light %s has sensible authored range" % light.name)
+		_check_local_lights(child)
+
+
 func _frames(n: int) -> void:
 	for i in n:
 		await get_tree().process_frame
 
 
 func _run() -> void:
+	# Exact old startup pair: float32 rounds z coefficient to -1 and loses FAR.
+	var old_projection := Projection.create_perspective(70.0, 16.0 / 9.0, 0.1, 1e7)
+	_check(old_projection.get_projection_plane(Projection.PLANE_FAR).normal.length() < 0.01,
+		"old SOLAR startup deterministically reproduces zero far-plane normal")
 	var eph := SolarEphemeris.new()
 	_check(eph.load_catalog(), "catalog loads")
 	_check(eph.moon_count() >= 290, "moon count %d ≥ 290" % eph.moon_count())
@@ -53,7 +83,11 @@ func _run() -> void:
 	add_child(vp)
 	var sv := SolarView.new()
 	sv.size = Vector2(900, 500)
+	sv.hide()  # Commander constructs SOLAR before its tab is opened.
 	vp.add_child(sv)
+	_check_projection(sv._cam.get_camera_projection(), "hidden SOLAR initial projection")
+	_check(sv._vp.render_target_update_mode != SubViewport.UPDATE_ALWAYS, "hidden SOLAR not forced to render")
+	sv.show()
 	await _frames(6)
 	_check(sv.eph.moon_count() >= 290, "SolarView catalog live")
 	_check(sv.facts.has("earth") and sv.facts.has("sun"), "facts dataset")
@@ -61,6 +95,7 @@ func _run() -> void:
 	_check(sv._sky_galaxies.size() >= 8, "bundled galaxy catalog (%d)" % sv._sky_galaxies.size())
 	_check(sv.show_ship_path == false, "SHIP PATH default off (was yellow lines from Earth)")
 	_check(sv._sun_light != null and sv._sun_light.shadow_enabled == false, "SOLAR sun shadows off")
+	_check_local_lights(sv._root)
 	# Soft _load_tex: HTML stub must not load as a texture
 	var bogus := OS.get_environment("XDG_DATA_HOME") + "/filament-falcon/assets/solar/_bogus_io.jpg"
 	DirAccess.make_dir_recursive_absolute(bogus.get_base_dir())
@@ -82,6 +117,21 @@ func _run() -> void:
 		if not (float(c["near"]) > 0.0 and float(c["far"]) > float(c["near"]) and float(c["far"]) / float(c["near"]) <= SolarView.FAR_RATIO_MAX * 1.01):
 			clips_ok = false
 	_check(clips_ok, "clip planes sane across zoom")
+	for vehicle in ["", SolarView.SHIP_ID, SolarView.BOOSTER_ID]:
+		sv.follow_id = vehicle
+		for d in [0.002, 0.005, 0.05, 100.0, 1e7, SolarView.AU_KM * 500.0]:
+			var cc := sv.clip_planes_for_dist(d)
+			var proj := Projection.create_perspective(70.0, 16.0 / 9.0, cc["near"], cc["far"])
+			_check_projection(proj, "SOLAR %s zoom %.4g" % [vehicle, d])
+	sv.follow_id = ""
+	# Same off-axis math used by twin OTW cameras (including toe-in and EVA near).
+	var dm := DisplayManager.new()
+	for near_plane in [1.0, 0.2]:
+		dm.near_now = near_plane
+		for side in [-1, 1]:
+			var f := dm.frustum_for(side)
+			_check_projection(Projection.create_frustum_aspect(f[1], 16.0 / 9.0, f[2], near_plane, 1e6), "OTW side %d near %.1f" % [side, near_plane])
+	dm.free()
 
 	sv.warp_to("earth")
 	await _frames(2)
