@@ -95,3 +95,14 @@ schematic glow; failed downloads also keep it. No source URLs were fetched by th
 fix. `--solar-test` covers missing/corrupt/valid synthetic fixtures; with an actual
 renderer it also checks transparent corners, edge fading, black-background keying
 and preserved image alpha in viewport pixels.
+
+## Exhaust anchoring
+Ship and booster plume/haze meshes use baked unit vertices from local Y=0 (nozzle)
+to Y=-1 (tail), rotated to body +Z. Increasing length scales vertices away from the
+nozzle, never forward through the hull. Previously the ship translated a centred
+cylinder by only 0.5 m, then scaled that mesh around its centre—full throttle drove
+half the exhaust and refractive haze forward into the ship. The shader also received
+the wrong along-plume coordinates. Both effects now share nozzle-origin geometry;
+haze opacity fades toward the tail. World and SOLAR use the same models, not a
+SOLAR-only exhaust visibility workaround. `--solar-test` checks actual vertices at
+low/full thrust, atmosphere/vacuum, rotation and scene scaling.

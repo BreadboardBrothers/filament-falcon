@@ -103,6 +103,105 @@ func _galaxy_tests(sv: SolarView) -> void:
 	await _frames(2)
 
 
+func _exhaust_bounds(mesh: MeshInstance3D, pivot: Node3D, nozzle_z: float, label: String) -> float:
+	var vertices: PackedVector3Array = mesh.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var min_z := INF
+	var max_z := -INF
+	var finite := true
+	# Rotate/scale like World/SOLAR; undo the parent to test the same body axis.
+	var parent := Transform3D(Basis(Vector3(0.3, 0.8, 0.1).normalized(), 1.2).scaled(Vector3.ONE * 500.0), Vector3(123, 456, -789))
+	for vertex in vertices:
+		var local := pivot.transform * mesh.transform * vertex
+		var recovered := parent.affine_inverse() * (parent * local)
+		finite = finite and recovered.is_finite()
+		min_z = minf(min_z, recovered.z)
+		max_z = maxf(max_z, recovered.z)
+	_check(finite and absf(min_z - nozzle_z) < 0.002 and max_z > nozzle_z,
+		label + " starts at nozzle and extends ONLY aft (also rotated/scaled)")
+	return max_z - min_z
+
+
+func _exhaust_tests(sv: SolarView) -> void:
+	var sim := Game.sim
+	var old_thrust := sim.thrust_now
+	var old_density := sim.density_now
+	var old_attached := sim.booster_attached
+	var ship := sv._ship_model
+	var pivot := ship.get_node("PlumePivot") as Node3D
+	var haze := pivot.get_node("Haze") as MeshInstance3D
+	var bp := sv._ship_booster.get_node("Plume") as Node3D
+	for vac in [false, true]:
+		var last_length := 0.0
+		for throttle in [0.05, 0.5, 1.0]:
+			sim.density_now = 0.0 if vac else 0.4
+			sim.thrust_now = sim.main_thrust * throttle
+			sim.booster_attached = false
+			ship.animate(Game, 0.0)
+			var length := _exhaust_bounds(ship.plume, pivot, 9.175, "ship %.2f vacuum=%s" % [throttle, vac])
+			_check(length > last_length, "ship throttle length grows aft monotonically")
+			last_length = length
+			_exhaust_bounds(haze, pivot, 9.175, "ship haze %.2f vacuum=%s" % [throttle, vac])
+			_check(ship.plume.visible and haze.visible, "thrust keeps exhaust and haze visible")
+			sim.booster_attached = true
+			sim.thrust_now = sim.booster_thrust * throttle
+			sv._sync_booster(sim)
+			for child in bp.get_children():
+				if child is MeshInstance3D:
+					_exhaust_bounds(child, bp, 12.375, "booster plume/haze %.2f vacuum=%s" % [throttle, vac])
+			var bm: ShaderMaterial = bp.get_meta("mat")
+			_check(absf(float(bm.get_shader_parameter("throttle")) - throttle) < 0.001, "booster shader tracks live thrust")
+	sim.booster_attached = false
+	sim.thrust_now = 0.0
+	ship.animate(Game, 0.0)
+	_check(not ship.plume.visible and not haze.visible, "zero thrust hides ship exhaust")
+	sim.thrust_now = old_thrust
+	sim.density_now = old_density
+	sim.booster_attached = old_attached
+
+
+func _exhaust_render_test() -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	var view := SubViewport.new()
+	view.size = Vector2i(256, 128)
+	view.own_world_3d = true
+	view.transparent_bg = true
+	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(view)
+	var camera := Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = 40.0
+	camera.position = Vector3(60, 0, 22)
+	view.add_child(camera)
+	camera.look_at(Vector3(0, 0, 22))
+	camera.current = true
+	var pivot := Node3D.new()
+	pivot.position.z = 9.175
+	pivot.rotation.x = -PI * 0.5
+	view.add_child(pivot)
+	var material := ProcGen.shader_mat("res://shaders/plume.gdshader", {"throttle": 1.0})
+	var mesh := ProcGen.mesh_node(ProcGen.exhaust_mesh(), material)
+	pivot.add_child(mesh)
+	for vacuum in [0.0, 1.0]:
+		material.set_shader_parameter("vacuum", vacuum)
+		mesh.scale = Vector3(1.0 + vacuum * 2.5, 23.0 + vacuum * 10.0, 1.0 + vacuum * 2.5)
+		await _frames(3)
+		var pixels := view.get_texture().get_image()
+		var bright := 0
+		var upstream := 0
+		for x in 256:
+			var body_z := camera.project_position(Vector2(x + 0.5, 64), 60).z
+			for y in 128:
+				var pixel := pixels.get_pixel(x, y)
+				if maxf(pixel.r, maxf(pixel.g, pixel.b)) > 0.03:
+					bright += 1
+					if body_z < 8.5:
+						upstream += 1
+		_check(bright > 10 and upstream == 0, "rendered full-throttle exhaust vacuum=%.1f: visible aft, no hull-side glow" % vacuum)
+	view.queue_free()
+	await _frames(2)
+
+
 func _frames(n: int) -> void:
 	for i in n:
 		await get_tree().process_frame
@@ -168,6 +267,8 @@ func _run() -> void:
 		var bad := sv._load_tex(bogus)
 		_check(bad == null, "soft _load_tex rejects HTML-as-jpg")
 
+	_exhaust_tests(sv)
+	await _exhaust_render_test()
 	await _galaxy_tests(sv)
 	_check(sv.show_labels == true, "LABELS default on")
 	_check(sv.exaggerated_sun == false, "EXAG. SUN default off")

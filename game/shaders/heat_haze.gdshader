@@ -22,5 +22,6 @@ void fragment() {
 		vnoise(vec3(lp.z * 4.0 + 5.0, along * 9.0 - time * 12.0, lp.x * 4.0))) - 0.5;
 	float amt = strength * fres * (1.0 - along) * 0.012;
 	ALBEDO = textureLod(screen_tex, SCREEN_UV + n * amt, 0.0).rgb;
-	ALPHA = clamp(strength * fres * 1.5, 0.0, 1.0);
+	// Fade the proxy as well as its refraction toward the tail.
+	ALPHA = clamp(strength * fres * 1.5, 0.0, 1.0) * pow(1.0 - along, 2.0);
 }

@@ -250,22 +250,18 @@ static func booster() -> Node3D:
 		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.18, 0.18, 0.05, 12), cool, add_pos + Vector3(0, 0, -0.4), rx))
 		root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.15, r_bot, h, 16), bell, add_pos, rx))
 	var plume_mat := ProcGen.shader_mat("res://shaders/plume.gdshader", {"core_color": Color(1.0, 0.7, 0.35)})
-	var pm := CylinderMesh.new()
-	pm.top_radius = 1.0
-	pm.bottom_radius = 1.0
-	pm.height = 1.0
-	pm.rings = 8
+	var pm := ProcGen.exhaust_mesh()
 	var pivot := Node3D.new()
 	pivot.name = "Plume"
-	pivot.position = Vector3(0, 0, aft_z + 1.6)
+	pivot.position = Vector3(0, 0, aft_z + 0.875)
 	pivot.rotation = Vector3(-PI * 0.5, 0, 0)
 	root.add_child(pivot)
-	var plume := ProcGen.mesh_node(pm, plume_mat, Vector3(0, -0.5, 0))
+	var plume := ProcGen.mesh_node(pm, plume_mat)
 	plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	pivot.add_child(plume)
 	pivot.set_meta("mat", plume_mat)
 	var haze_mat := ProcGen.shader_mat("res://shaders/heat_haze.gdshader")
-	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3(0, -0.55, 0), Vector3.ZERO, Vector3(1.4, 0.4, 1.4))
+	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3.ZERO, Vector3.ZERO, Vector3(1.4, 0.4, 1.4))
 	haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	pivot.add_child(haze)
 	pivot.set_meta("haze", haze_mat)

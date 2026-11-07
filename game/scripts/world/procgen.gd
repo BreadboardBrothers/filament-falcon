@@ -3,6 +3,26 @@ extends RefCounted
 ## Procedural meshes and materials (no external model files needed).
 
 
+## Unit exhaust: nozzle at y=0, tail at y=-1. Bake the origin into vertices,
+## not a child translation: scaling must NEVER move the upstream end forward.
+## Rotation -PI/2 around X maps -Y to the authored ship's aft +Z axis.
+static func exhaust_mesh() -> ArrayMesh:
+	var cylinder := CylinderMesh.new()
+	cylinder.top_radius = 1.0
+	cylinder.bottom_radius = 1.0
+	cylinder.height = 1.0
+	cylinder.radial_segments = 24
+	cylinder.rings = 8
+	var arrays := cylinder.get_mesh_arrays()
+	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+	for i in vertices.size():
+		vertices[i].y -= 0.5
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
 static func mat(color: Color, metallic: float = 0.0, roughness: float = 0.6, emission: Color = Color.BLACK, emission_energy: float = 1.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color

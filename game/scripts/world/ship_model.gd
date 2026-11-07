@@ -110,23 +110,18 @@ func _build() -> void:
 		add_child(ProcGen.mesh_node(ProcGen.cyl(0.26, 0.26, 0.07, 16), cool, p_v + Vector3(0, 0, -0.35), Vector3(PI * 0.5, 0, 0)))
 		add_child(ProcGen.mesh_node(ProcGen.cyl(0.22, 0.72, 1.55, 28), bell_vac, p_v, Vector3(PI * 0.5, 0, 0)))
 	plume_mat = ProcGen.shader_mat("res://shaders/plume.gdshader")
-	var pm := CylinderMesh.new()
-	pm.top_radius = 1.0
-	pm.bottom_radius = 1.0
-	pm.height = 1.0
-	pm.radial_segments = 24
-	pm.rings = 8
+	var pm := ProcGen.exhaust_mesh()
 	plume = ProcGen.mesh_node(pm, plume_mat)
 	plume.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var plume_pivot := Node3D.new()
-	plume_pivot.position = Vector3(0, 0, 9.55)  # past vac bell lips — no coplanar overlap
+	plume_pivot.position = Vector3(0, 0, 9.175)  # past vac bell lips — no coplanar overlap
 	plume_pivot.rotation = Vector3(-PI * 0.5, 0, 0)
 	add_child(plume_pivot)
-	plume.position = Vector3(0, -0.5, 0)
+	plume.position = Vector3.ZERO
 	plume_pivot.add_child(plume)
 	plume_pivot.name = "PlumePivot"
 	haze_mat = ProcGen.shader_mat("res://shaders/heat_haze.gdshader")
-	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3(0, -0.55, 0), Vector3.ZERO, Vector3(1.15, 1.0, 1.15))
+	var haze := ProcGen.mesh_node(pm, haze_mat, Vector3.ZERO, Vector3.ZERO, Vector3(1.15, 1.0, 1.15))
 	haze.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	haze.name = "Haze"
 	plume_pivot.add_child(haze)

@@ -132,12 +132,15 @@ Check mock coverage without touching apt: `bash game/tools/test_runtime_deps.sh`
 
 After acquiring this version once with `git pull`, normal `game/run.sh` starts with
 `git pull --ff-only --no-rebase` from the current branch's configured upstream.
-Local changes (including untracked files), archive installs or no upstream skip
-updates with a message. Divergence, offline/auth failures or a 20-second timeout
-warn and continue with the installed version. It never stashes, resets, rebases or
+Local changes do **not** preemptively skip the pull. Git itself decides whether
+updates can merge without overwriting local work: nonconflicting changes may update;
+conflicting edits/untracked files, divergence, offline/auth failures or a 20-second
+timeout warn and continue with the installed version. Archive installs or no upstream
+skip with an actionable message. It never stashes, resets, rebases or
 requests Git credentials. When commits change, the updated launcher re-execs once
 with the original arguments before checking dependencies.
 
 `--no-update` skips only Git updates. `--offline` skips updates/fetching and disables
-dependency installation. `--check-deps`, `--no-install` and test/headless invocations
-also skip updates. No large asset downloads are enabled by auto-update.
+dependency installation. `--check-deps` and test/screenshot invocations also skip updates. A normal
+`--headless` launch or `--no-install` still attempts an update (the latter only
+disables dependency installation). No large asset downloads are enabled by auto-update.
