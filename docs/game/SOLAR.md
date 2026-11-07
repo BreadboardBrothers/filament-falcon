@@ -77,3 +77,21 @@ scaling and local engine lights remain; world shadows and cockpit projections
 are not disabled or changed. `--solar-test` checks all eight actual projection
 plane intersections, including hidden initialization, planet/vehicle zooms and
 twin OTW frusta. A headless test proves the matrix defect, not a GPU reproduction.
+
+## Galaxy images and offline fallback
+Galaxies retain bundled RA/Dec, angular size and position angle even without photos.
+Missing/unreadable/HTML-as-JPEG files now produce soft transparent elliptical glows,
+not the old uniform 85%-opaque pale rectangular quads. Valid galaxy photos use a
+galaxy-only shader: preserve alpha, softly mask black photographic backgrounds and
+feather quad borders. Planet textures and the Milky Way panorama are not black-keyed.
+Bright stars remain intentional tiny 3-pixel points (not large galaxy rectangles).
+
+No download is needed to remove the squares. The launcher does not fetch large sky
+assets automatically. Optional photos/panorama can be requested explicitly from the
+repository root with `bash game/tools/fetch_solar_assets.sh`, then relaunch. This
+existing script downloads the broader optional SOLAR texture set, not just galaxies;
+its four galaxy mappings are M31, M33, LMC and SMC. Other catalog galaxies keep the
+schematic glow; failed downloads also keep it. No source URLs were fetched by this
+fix. `--solar-test` covers missing/corrupt/valid synthetic fixtures; with an actual
+renderer it also checks transparent corners, edge fading, black-background keying
+and preserved image alpha in viewport pixels.

@@ -41,6 +41,68 @@ func _check_local_lights(root: Node) -> void:
 		_check_local_lights(child)
 
 
+func _galaxy_tests(sv: SolarView) -> void:
+	var dir := OS.get_environment("XDG_DATA_HOME") + "/galaxy-test-fixtures"
+	DirAccess.make_dir_recursive_absolute(dir)
+	var corrupt := FileAccess.open(dir + "/bad.jpg", FileAccess.WRITE)
+	corrupt.store_string("<html>not an image</html>")
+	corrupt = null
+	# Synthetic image: opaque black JPEG-like background + bright centre.
+	# PNG is used to avoid JPEG compression ambiguity in pixel assertions.
+	var fixture := Image.create(32, 32, false, Image.FORMAT_RGBA8)
+	fixture.fill(Color.BLACK)
+	for x in range(10, 22):
+		for y in range(10, 22):
+			fixture.set_pixel(x, y, Color.WHITE)
+	fixture.save_png(dir + "/black-background.png")
+	var cases := [sv.galaxy_material(dir + "/absent.jpg"), sv.galaxy_material(dir + "/bad.jpg"), sv.galaxy_material(dir + "/black-background.png")]
+	_check(not cases[0].get_shader_parameter("has_image"), "missing galaxy uses procedural alpha glow")
+	_check(not cases[1].get_shader_parameter("has_image"), "corrupt galaxy uses procedural alpha glow")
+	_check(cases[2].get_shader_parameter("has_image"), "valid galaxy uses image alpha shader")
+	var original := sv._load_tex(dir + "/black-background.png").get_image().get_pixel(0, 0)
+	_check(original.a > 0.99 and original.r < 0.01, "generic loader preserves opaque black pixels for planets")
+	fixture.fill(Color.WHITE)
+	fixture.save_png(dir + "/white-border.png")
+	cases.append(sv.galaxy_material(dir + "/white-border.png"))
+	fixture.fill(Color(1, 1, 1, 0))
+	fixture.save_png(dir + "/transparent.png")
+	cases.append(sv.galaxy_material(dir + "/transparent.png"))
+	if DisplayServer.get_name() == "headless":
+		print("  NOTE galaxy shader pixel checks require actual renderer; material/loader checks ran headless")
+		return
+	var view := SubViewport.new()
+	view.size = Vector2i(64, 64)
+	view.own_world_3d = true
+	view.transparent_bg = true
+	view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(view)
+	var cam := Camera3D.new()
+	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+	cam.size = 2.0
+	cam.position.z = 2.0
+	cam.current = true
+	view.add_child(cam)
+	var mesh := MeshInstance3D.new()
+	var quad := QuadMesh.new()
+	quad.size = Vector2(2, 2)
+	mesh.mesh = quad
+	view.add_child(mesh)
+	for i in cases.size():
+		mesh.material_override = cases[i]
+		await _frames(3)
+		var pixels := view.get_texture().get_image()
+		_check(pixels.get_pixel(0, 0).a < 0.02, "render galaxy case %d: quad corner transparent" % i)
+		_check(pixels.get_pixel(2, 32).a < 0.25, "render galaxy case %d: quad edge feathered" % i)
+		if i == 2:
+			_check(pixels.get_pixel(16, 32).a < 0.02, "render galaxy black photographic background transparent away from edges")
+		if i < 4:
+			_check(pixels.get_pixel(32, 32).a > 0.1, "render galaxy case %d: centre visible" % i)
+		else:
+			_check(pixels.get_pixel(32, 32).a < 0.02, "render galaxy preserves source alpha")
+	view.queue_free()
+	await _frames(2)
+
+
 func _frames(n: int) -> void:
 	for i in n:
 		await get_tree().process_frame
@@ -106,6 +168,7 @@ func _run() -> void:
 		var bad := sv._load_tex(bogus)
 		_check(bad == null, "soft _load_tex rejects HTML-as-jpg")
 
+	await _galaxy_tests(sv)
 	_check(sv.show_labels == true, "LABELS default on")
 	_check(sv.exaggerated_sun == false, "EXAG. SUN default off")
 

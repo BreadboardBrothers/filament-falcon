@@ -1412,17 +1412,8 @@ func _build_sky() -> void:
 		var quad := QuadMesh.new()
 		quad.size = Vector2(1.0, 1.0)
 		gn.mesh = quad
-		var gmat := StandardMaterial3D.new()
-		gmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		gmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		gmat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		gmat.billboard_mode = BaseMaterial3D.BILLBOARD_DISABLED
 		var col: Array = gd.get("color", [0.7, 0.75, 0.9])
-		gmat.albedo_color = Color(col[0], col[1], col[2], 0.85)
-		var tex := _load_tex(Geo.asset_dir() + "/solar/sky/" + str(gd.get("texture", "")))
-		if tex:
-			gmat.albedo_texture = tex
-			gmat.albedo_color = Color(1, 1, 1, 0.95)
+		var gmat := galaxy_material(Geo.asset_dir() + "/solar/sky/" + str(gd.get("texture", "")), Color(col[0], col[1], col[2]))
 		gn.material_override = gmat
 		gn.set_meta("ra_h", float(gd.get("ra_h", 0.0)))
 		gn.set_meta("dec_deg", float(gd.get("dec_deg", 0.0)))
@@ -1432,6 +1423,19 @@ func _build_sky() -> void:
 		_sky_root.add_child(gn)
 		_galaxy_nodes.append(gn)
 	_apply_sky_visibility()
+
+
+## Galaxy-only soft alpha treatment; absent/invalid images use an offline glow.
+## Generic planet loader remains unchanged (black planet pixels are meaningful).
+func galaxy_material(path: String, color: Color = Color(0.7, 0.75, 0.9)) -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = load("res://shaders/solar/galaxy.gdshader")
+	var texture := _load_tex(path)
+	material.set_shader_parameter("has_image", texture != null)
+	material.set_shader_parameter("tint", color)
+	if texture:
+		material.set_shader_parameter("galaxy_image", texture)
+	return material
 
 
 func _apply_sky_visibility() -> void:

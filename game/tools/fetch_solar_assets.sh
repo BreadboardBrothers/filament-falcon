@@ -106,7 +106,7 @@ for item in "${ITEMS[@]}"; do
 done
 
 
-# Sky / galaxy textures (optional; SOLAR falls back to colored billboards + bundled star catalog)
+# Sky / galaxy textures (optional; SOLAR falls back to soft procedural galaxy glows + bundled star catalog)
 SKY_OUT="$OUT/sky"
 mkdir -p "$SKY_OUT"
 declare -a SKY_ITEMS=(
@@ -136,7 +136,7 @@ for item in "${SKY_ITEMS[@]}"; do
     echo "sky/$file  $credit  $url" >> "$OUT/SOURCES.txt"
     ok=$((ok+1))
   else
-    log "! failed sky/$file — colored billboard fallback"
+    log "! failed sky/$file — soft procedural glow fallback"
     echo "MISSING sky/$file  ($credit)  $url" >> "$OUT/SOURCES.txt"
     miss=$((miss+1))
   fi
