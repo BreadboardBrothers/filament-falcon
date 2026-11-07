@@ -15,7 +15,7 @@ A="${XDG_DATA_HOME:-$HOME/.local/share}/filament-falcon/assets"
 mkdir -p "$A" || { echo "fetch_assets: cannot create $A" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || { echo "fetch_assets: curl is missing (sudo apt install curl)" >&2; exit 1; }
 HAVE_PY=1
-python3 -c "import numpy, PIL" 2>/dev/null || { HAVE_PY=0; echo "note: python3-numpy / python3-pil missing: Moon + elevation conversion, HD Earth and the OSM region are skipped (sudo apt install python3-numpy python3-pil python3-pip osmium-tool; then: pip install --user --break-system-packages osmium)"; }
+python3 -c "import numpy, PIL" 2>/dev/null || { HAVE_PY=0; echo "note: python3-numpy / python3-pil missing: Moon + elevation conversion, HD Earth and the OSM region are skipped (run ./run.sh --geo-tools --check-deps to check required Python modules)"; }
 MONTHS=all; HD_MONTHS=7; DO_HD=1; REGION=fredericton; BBOX=""; DO_REGION=1
 for a in "$@"; do case "$a" in
   --months=*) MONTHS="${a#*=}" ;; --region=*) REGION="${a#*=}" ;;
@@ -160,7 +160,7 @@ fi
 if [ "$DO_REGION" = 1 ] && [ "$HAVE_PY" = 1 ]; then
   # OSM city from the Geofabrik New Brunswick .pbf (~65 MB once, re-checked after 30 days;
   # cached in ~/.local/share/filament-falcon/osm). Up-to-date regions are not rebuilt.
-  python3 -c "import osmium" 2>/dev/null || echo "  note: pyosmium missing, using the slower Overpass API (sudo apt install osmium-tool; pip install --user --break-system-packages osmium)"
+  python3 -c "import osmium" 2>/dev/null || echo "  note: pyosmium missing, using the slower Overpass API (sudo apt install python3-pyosmium; osmium-tool is an optional accelerator)"
   echo "OSM detail region '$REGION'..."
   python3 tools/build_region.py --region "$REGION" ${BBOX:+--bbox "$BBOX"} || { echo "  ! region build failed"; FAIL=1; }
 fi

@@ -39,7 +39,7 @@ different `godot` link or udev rule, the script reports it and leaves it alone.
 | apt (VR): flatpak, adb, android-sdk-platform-tools-common, avahi-daemon | system | WiVRn, the Quest over USB, discovery |
 | apt (panels): evtest, joystick | system | Testing the ESP32 joysticks |
 | pipewire-pulse | system | Only if PipeWire is present without PulseAudio |
-| pyosmium (`pip --user --break-system-packages`; a venv in `~/.local/share/filament-falcon/pyenv` if pip refuses) | home | Faster OSM region builds |
+| pyosmium (private venv in `~/.local/share/filament-falcon/pyenv`; no system pip changes) | home | Faster OSM region builds |
 | Godot 4.7.2 stable (official GitHub release, **SHA-512 checked**; not installed if the check fails) | `~/Apps/godot/`, linked as `~/.local/bin/godot` | The game (`run.sh` uses `godot` on PATH, or `GODOT=`) |
 | WiVRn (`flatpak --user`, from Flathub) | home | Quest 3 streaming / OpenXR runtime |
 | The VR launcher entry (`install_vr_launcher.sh`) | `~/.local/share/applications` | Start the spacewalk from inside the headset |
@@ -88,3 +88,42 @@ The doctor checks these and reports each one as OK, WARN or MISSING, followed by
 - the udev rule, and whether you need to log out and in;
 - the assets and OSM region;
 - free disk space (warns under 5 GB).
+
+## Automatic launcher dependency check
+
+Run `cd game && ./run.sh` as your **normal user**. Each start checks Godot **4.7.2**,
+Python 3, native engine/X11 libraries and the dependencies for enabled helpers.
+Missing system packages are installed with apt on Mint/Ubuntu/Debian only (sudo's
+normal terminal password prompt; no upgrade or graphics-driver changes). Existing
+packages are not reinstalled. Installation failures stop the launch and are rechecked.
+The official pinned Godot ZIP is installed under `~/Apps/godot` using the existing
+setup installer: SHA-512 verification is mandatory, extraction is staged before rename.
+An existing compatible `GODOT=/path/to/engine` is respected, including spaces.
+
+- Intercom (unless `--no-ics` or saved disabled): numpy + `pactl`, `parec`, `pacat`.
+  Requires a working PulseAudio/PipeWire-Pulse service and configured audio devices;
+  the launcher does not replace your audio server.
+- Voice (unless `--no-voice` / saved disabled): espeak/espeak-ng. Piper and its model
+  are optional, manually configured alternatives, not automatically downloaded.
+- LED bridge (unless `--no-led` / saved disabled): pyserial. Hardware permissions /
+  udev rules remain the explicit `setup.sh` hardware step.
+- X11 display/touch helpers: xrandr + xinput when an X11 display is present and mapping
+  or touch isolation is enabled. Wayland mapping is not supported by these helpers.
+- `--geo-tools`: numpy, Pillow, pyosmium via distro packages. osmium-tool is an optional
+  accelerator; cached map/terrain data and all large imagery are optional.
+- `--fetch-assets`: **explicitly** request the existing Earth/Moon/OSM asset fetcher
+  (also checks geo dependencies). Asset downloads are no longer automatic on launch;
+  existing assets continue working. `--no-fetch` still disables all launcher fetches.
+- Real VR needs a separately configured WiVRn/OpenXR runtime (`VR_SETUP.md`); requesting
+  `--eva-vr` without it fails clearly. No VR software is installed by the launcher.
+
+`./run.sh --check-deps` checks only, exits nonzero when anything is missing, and does
+not launch, download or install. `--no-install` (or `FALCON_NO_INSTALL=1`) launches
+only if dependencies already exist. Tests/headless invocations disable installation
+and helper dependencies. Noninteractive runs never prompt sudo: missing system
+packages give an actionable error instead. No `pip --break-system-packages` is used;
+the standalone setup's optional pip flow uses a private venv.
+
+Offline healthy installations start normally; missing downloads/packages require a
+network connection. Unsupported distros must install the reported tools themselves.
+Check mock coverage without touching apt: `bash game/tools/test_runtime_deps.sh`.

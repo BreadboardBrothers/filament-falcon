@@ -10,6 +10,9 @@
 #        ./run.sh --no-display-setup      skip the touch mapping
 #        ./run.sh --no-touch-isolate      let the touchscreen move the mouse pointer and take
 #                                         focus again (same as FALCON_TOUCH_ISOLATE=0)
+#        ./run.sh --check-deps       report missing dependencies without installing/launching
+#        ./run.sh --no-install       fail instead of installing missing dependencies
+#        ./run.sh --fetch-assets     explicitly fetch optional Earth/Moon/OSM assets
 #        ./run.sh --no-fetch          skip the first-run Earth/Moon/OSM download (tools/fetch_assets.sh)
 #        ./run.sh --no-ics                no intercom helper (headsets off)
 #        ./run.sh --eva-vr                the spacewalker's VR client (Meta Quest 3 via WiVRn);
@@ -18,7 +21,8 @@
 #        ./run.sh --eva-vr --eva-flat     same client on the desktop, no headset
 # It also starts the intercom helper (tools/falcon_ics.py: 3 USB headsets, PTT/VOX, radio
 # effect). It needs python3-numpy + pulseaudio-utils; if anything is missing it logs why to
-# ~/.local/share/filament-falcon/ics.log and the game runs without intercom.
+# ~/.local/share/filament-falcon/ics.log. Runtime dependencies are checked before launch;
+# missing enabled-feature dependencies are installed (sudo for apt, never for the game).
 set -e
 cd "$(dirname "$0")"
 GODOT="${GODOT:-godot}"
@@ -26,7 +30,11 @@ SETUP_ARGS=()
 GAME_ARGS=()
 DO_SETUP=1
 DO_ICS=1
-DO_FETCH=1
+DO_VOICE=1
+DO_LED=1
+DO_FETCH=0
+DO_GEO=0
+DEPS_MODE=auto
 EVA_VR=0
 XR_MODE=on
 for a in "$@"; do
@@ -35,12 +43,44 @@ for a in "$@"; do
     --no-display-setup) DO_SETUP=0 ;;
     --no-touch-isolate) export FALCON_TOUCH_ISOLATE=0 ;;
     --no-ics) DO_ICS=0; GAME_ARGS+=("$a") ;;
+    --no-voice) DO_VOICE=0; GAME_ARGS+=("$a") ;;
+    --no-led) DO_LED=0; GAME_ARGS+=("$a") ;;
     --no-fetch) DO_FETCH=0 ;;
+    --fetch-assets) DO_FETCH=1; DO_GEO=1 ;;
+    --geo-tools) DO_GEO=1 ;;
+    --check-deps) DEPS_MODE=check ;;
+    --no-install) DEPS_MODE=no-install ;;
+    --headless|--*test*|--screenshots=*) DEPS_MODE=no-install; DO_SETUP=0; DO_ICS=0; DO_VOICE=0; DO_LED=0; GAME_ARGS+=("$a") ;;
     --eva-vr) EVA_VR=1 ;;
     --eva-flat) XR_MODE=off ;;
     *) GAME_ARGS+=("$a") ;;
   esac
 done
+# Never launch the game as root (apt alone uses sudo).
+if [ "$(id -u)" = 0 ]; then echo "Run as your normal user, not sudo." >&2; exit 1; fi
+# Headless automation must never prompt/install implicitly.
+[ "${FALCON_NO_INSTALL:-0}" != 1 ] || DEPS_MODE=no-install
+# Respect saved feature disables too (Godot ConfigFile booleans are INI-compatible).
+if command -v python3 >/dev/null 2>&1; then
+  for feature in ics audio led; do
+    if python3 - "$feature" "${XDG_DATA_HOME:-$HOME/.local/share}/filament-falcon/falcon_settings.cfg" <<'PYCFG'
+import configparser, sys
+c = configparser.ConfigParser(strict=False)
+try:
+    c.read(sys.argv[2])
+    key = 'voice' if sys.argv[1] == 'audio' else 'enabled'
+    sys.exit(0 if c.get(sys.argv[1], key, fallback='true').strip().lower() == 'false' else 1)
+except configparser.Error:
+    sys.exit(1)
+PYCFG
+    then
+      case "$feature" in ics) DO_ICS=0;; audio) DO_VOICE=0;; led) DO_LED=0;; esac
+    fi
+  done
+fi
+source tools/runtime_deps.sh
+falcon_runtime_deps || exit 1
+[ "$DEPS_MODE" != check ] || exit 0
 # Re-import on a fresh clone, or after a git pull changed any script/scene/shader (a stale
 # class cache causes "Identifier ... not declared" parse errors and a broken game).
 STAMP=.godot/.falcon_import_stamp

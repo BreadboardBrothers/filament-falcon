@@ -155,26 +155,12 @@ py_has() { python3 -c "import $1" >/dev/null 2>&1; }
 do_python() {
   step "Python modules (numpy, Pillow, pyserial from apt; pyosmium from pip)"
   if py_has osmium; then ok "pyosmium already importable"; return; fi
-  if [ "$DRY" = 1 ]; then
-    run python3 -m pip install --user --break-system-packages osmium
-    say "  (fallback if that fails: venv $VENV + a .pth link so the system python3 finds it)"
-    return
-  fi
-  have python3 || { fail "python3 missing (apt step failed?)"; return; }
-  local brk=()
-  python3 -m pip install --help 2>/dev/null | grep -q -- --break-system-packages && brk=(--break-system-packages)
-  if run python3 -m pip install --user "${brk[@]}" osmium && py_has osmium; then ok "pyosmium installed (pip --user)"; return; fi
-  warn "pip --user failed; using a private venv instead: $VENV"
+  have python3 || { fail "python3 missing"; return; }
   if run python3 -m venv --system-site-packages "$VENV" && run "$VENV/bin/python" -m pip install osmium; then
-    # make the system python3 (used by the game, run.sh and fetch_assets.sh) see the venv's packages
-    local site usersite
-    site="$("$VENV/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
-    usersite="$(python3 -m site --user-site)"
-    run mkdir -p "$usersite"
-    if [ "$DRY" = 0 ]; then printf '%s\n' "$site" > "$usersite/filament-falcon-pyenv.pth"; fi
-    if py_has osmium; then ok "pyosmium installed (venv + $usersite/filament-falcon-pyenv.pth)"; else fail "pyosmium still not importable"; fi
+    export PATH="$VENV/bin:$PATH"
+    ok "pyosmium installed in $VENV (use its bin directory on PATH)"
   else
-    fail "could not install pyosmium (the OSM region falls back to the slower Overpass API)"
+    fail "could not install pyosmium into $VENV"
   fi
 }
 
@@ -185,9 +171,10 @@ do_godot() {
   if [ -x "$GODOT_BIN" ] && "$GODOT_BIN" --version 2>/dev/null | grep -q "^${GODOT_VER}\.stable"; then
     ok "$GODOT_BIN already installed"
   else
-    local tmp=/tmp/falcon-godot-XXXX
-    [ "$DRY" = 1 ] || tmp="$(mktemp -d)"
+    [ "$(uname -m)" = x86_64 ] || { fail "automatic Godot download supports x86_64 only; supply GODOT manually"; return 1; }
     run mkdir -p "$GODOT_DIR"
+    local tmp="$GODOT_DIR/.download-XXXX"
+    [ "$DRY" = 1 ] || tmp="$(mktemp -d "$GODOT_DIR/.download-XXXXXX")"
     run curl -fL --retry 3 --connect-timeout 20 -o "$tmp/$GODOT_FILE.zip" "$GODOT_URL/$GODOT_FILE.zip" || { fail "Godot download failed"; [ "$DRY" = 1 ] || rm -rf "$tmp"; return; }
     if run curl -fsSL --retry 3 -o "$tmp/SHA512-SUMS.txt" "$GODOT_URL/SHA512-SUMS.txt"; then
       if [ "$DRY" = 0 ]; then
@@ -198,12 +185,14 @@ do_godot() {
         fi
       fi
     else
-      warn "could not fetch SHA512-SUMS.txt: installing without checksum verification"
+      fail "could not fetch SHA512-SUMS.txt: refusing unverified engine"; rm -rf "$tmp"; return 1
     fi
-    run unzip -o -q "$tmp/$GODOT_FILE.zip" -d "$GODOT_DIR" || { fail "unzip failed"; [ "$DRY" = 1 ] || rm -rf "$tmp"; return; }
-    run chmod +x "$GODOT_BIN"
+    run unzip -o -q "$tmp/$GODOT_FILE.zip" -d "$tmp/unpacked" || { fail "unzip failed"; [ "$DRY" = 1 ] || rm -rf "$tmp"; return; }
+    run chmod +x "$tmp/unpacked/$GODOT_FILE"
+    run mv "$tmp/unpacked/$GODOT_FILE" "$GODOT_BIN"
     [ "$DRY" = 1 ] || rm -rf "$tmp"
   fi
+  [ "${FALCON_RUNTIME_SOURCE:-0}" = 1 ] && return 0
   # `godot` on PATH (run.sh and the VR launcher call `godot` unless $GODOT is set)
   if godot_on_path; then ok "godot on PATH -> $GODOT_BIN"; return; fi
   if have godot; then
@@ -381,6 +370,8 @@ doctor() {
 }
 
 # ---------------------------------------------------------------- main
+# Runtime launcher reuses the pinned, checksum-verified engine installer only.
+[ "${FALCON_RUNTIME_SOURCE:-0}" = 1 ] && return 0
 preflight
 if [ "$CHECK" = 1 ]; then doctor; exit $?; fi
 [ "$DRY" = 1 ] && say "${Y}DRY RUN: nothing is installed, changed or downloaded.${N}"
