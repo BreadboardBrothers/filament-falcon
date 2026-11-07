@@ -25,6 +25,10 @@
 # missing enabled-feature dependencies are installed (sudo for apt, never for the game).
 set -e
 cd "$(dirname "$0")"
+if [ "$(id -u)" = 0 ]; then echo "Run as your normal user, not sudo." >&2; exit 1; fi
+# Update before sourcing any runtime helpers: if they changed, reload everything once.
+source tools/launcher_update.sh
+falcon_launcher_update "$@"
 GODOT="${GODOT:-godot}"
 SETUP_ARGS=()
 GAME_ARGS=()
@@ -39,6 +43,8 @@ EVA_VR=0
 XR_MODE=on
 for a in "$@"; do
   case "$a" in
+    --no-update) ;;
+    --offline) DO_FETCH=0; DEPS_MODE=no-install ;;
     --landscape-console) SETUP_ARGS+=("--landscape") ;;
     --no-display-setup) DO_SETUP=0 ;;
     --no-touch-isolate) export FALCON_TOUCH_ISOLATE=0 ;;

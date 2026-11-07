@@ -7,7 +7,7 @@
 4. Look for leftover sinks from a crash: `pactl list short modules | grep -i falcon`. To clear them: `pactl list short modules | awk '/falcon/{print $1}' | xargs -r -n1 pactl unload-module`
 5. Measure the delay through a headset: `python3 tools/falcon_ics.py --latency-test pilot`
 
-The intercom runs at a fixed 48 kHz with 10 ms blocks and about 30 ms of buffer (around 50-70 ms end to end). Capture prefers float32 (falls back to s16le); playback is s16le at the sink's channel count. Drift between USB clocks is corrected with cubic resampling (inaudible). PulseAudio/PipeWire resample any headset that runs at 44.1 kHz. When the helper stops, the game moves its audio back to the default output.
+The intercom runs at a fixed 48 kHz with 10 ms blocks and a 100 ms ring target by default (30 ms in low-latency mode; actual end-to-end latency depends on the sound server/devices). Capture prefers float32 (falls back to s16le); playback is s16le at the sink's channel count. Drift between USB clocks is corrected with cubic resampling (inaudible). PulseAudio/PipeWire resample any headset that runs at 44.1 kHz. When the helper stops, the game moves its audio back to the default output.
 
 **Audio quality (Commander → ICS → AUDIO QUALITY):** LOW / NORMAL / HIGH / HI-FI. This changes the radio band, compressor makeup, soft-clip drive and static level. Default is **HIGH** (wider band ~200–5200 Hz, light compression). HI-FI is nearly clean (80–12 kHz, almost no drive). The old "telephone" sound was NORMAL/LOW with a hard tanh drive of 1.6 and +9 dB makeup. Godot's mix rate is 48 kHz (UI beeps used to be synthesised at 24 kHz).
 
@@ -27,3 +27,25 @@ The intercom runs at a fixed 48 kHz with 10 ms blocks and about 30 ms of buffer 
 - When a card exposes several outputs (analog + digital/iec958), pick the profile you want in AUDIO OUT. The stream is opened with the sink's own channel count (mono, stereo, 5.1, 7.1), with the voice copied to every channel.
 - A muted or suspended sink is woken up and unmuted (logged); a sink at < 5 % volume is logged as a warning.
 - Log: `grep -E "route|OUTPUT|outputs|IDENTIFY|sink was" ~/.local/share/filament-falcon/ics.log | tail -n 40`. Every 10 s `outputs:` shows per station the peak dB sent, the stream state and the sink name.
+
+## Resilient USB/headset transport
+
+**Commander → ICS → RADIO / MIX → RESILIENT AUDIO** is **ON by default**, also
+for existing settings files without this key. It is saved as `ics/resilient_audio`
+and sent to the helper live. ON uses 100 ms rings, requested capture latency 80 ms
+and playback 100 ms. OFF preserves low latency (30 ms rings, 25/40 ms capture/playback).
+Changing it rebuilds streams on the control worker; expect a brief rebuffering gap.
+Voice and sidetone have more delay in resilient mode—these numbers are requested
+buffers, NOT measured end-to-end latency. AUDIO QUALITY / HI-FI remains a separate
+DSP/effects choice and does not change transport buffering.
+
+All modes retain bounded queues, rebuffering and USB clock-drift correction.
+Slow pactl scans and hotplug/reconnect operations now run on a separate serialized
+worker, not the mixer clock. Each headset still has its own playback thread. Child
+stderr is drained into a bounded tail; writes stuck for over two seconds are killed
+and restarted when the control worker next checks them (a slow scan can delay this).
+The ICS status shows output fill, underruns/overruns and write-stall counts; helper
+UDP telemetry includes every input/output. `ics.log` reports transport summaries
+about every ten seconds, including mixer `late` counts. Counters reset on stream rebuild.
+This helps scheduling jitter; it cannot fix insufficient hub power or USB resets.
+No USB hardware configuration or power policy is changed automatically.

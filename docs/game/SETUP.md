@@ -127,3 +127,17 @@ the standalone setup's optional pip flow uses a private venv.
 Offline healthy installations start normally; missing downloads/packages require a
 network connection. Unsupported distros must install the reported tools themselves.
 Check mock coverage without touching apt: `bash game/tools/test_runtime_deps.sh`.
+
+## Launcher auto-update
+
+After acquiring this version once with `git pull`, normal `game/run.sh` starts with
+`git pull --ff-only --no-rebase` from the current branch's configured upstream.
+Local changes (including untracked files), archive installs or no upstream skip
+updates with a message. Divergence, offline/auth failures or a 20-second timeout
+warn and continue with the installed version. It never stashes, resets, rebases or
+requests Git credentials. When commits change, the updated launcher re-execs once
+with the original arguments before checking dependencies.
+
+`--no-update` skips only Git updates. `--offline` skips updates/fetching and disables
+dependency installation. `--check-deps`, `--no-install` and test/headless invocations
+also skip updates. No large asset downloads are enabled by auto-update.

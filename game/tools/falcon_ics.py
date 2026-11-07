@@ -16,7 +16,7 @@ Audio graph (PulseAudio, or PipeWire through pipewire-pulse; `pactl info` tells 
     headset mics  -> parec -> helper: VOX/PTT gate, radio fx, beeps -> the OTHER headsets (pacat)
     optional: module-loopback falcon_game.monitor (+ falcon_mc) -> the default sink (room speakers)
 The helper loads/unloads the null sinks and loopbacks itself and removes stale ones from a
-crashed run. Every stream crosses a small adaptive ring that drops/repeats one sample per 5 ms
+crashed run. Every stream crosses a small adaptive ring that drops/repeats one sample per 10 ms
 block when needed, so the four different USB/sink clocks never drift apart.
 
 Latency budget (48 kHz, 10 ms blocks): capture ~15-20 ms + ring ~30 ms + playback ~25-40 ms + USB
@@ -74,6 +74,7 @@ DEFAULTS = {
     "speakers": True, "mc_vol": 0.9, "allcall_duck": 0.25,
     # audio_quality: low | normal | high | hifi  (band, compressor, static, soft-clip)
     "audio_quality": "high",
+    "resilient_audio": True,
 }
 SEAT_DEFAULTS = {"mode": "vox", "vox_db": -38.0, "attack_ms": 25.0, "hang_ms": 600.0,
                  "game_vol": 0.7, "ics_vol": 1.0, "sidetone": 0.0, "mic_gain": 1.0}
@@ -533,6 +534,24 @@ def _resample_cubic(x, n):
     return ((a * f + b) * f + c) * f + p1
 
 
+def transport(cfg):
+    # Requested server latency, not a measurement of end-to-end delay.
+    return (100, 80, 100) if cfg.get("resilient_audio", True) else (30, 25, 40)
+
+
+def drain_errors(proc, owner):
+    def drain():
+        try:
+            while True:
+                data = proc.stderr.read(256)
+                if not data:
+                    break
+                owner.err = (getattr(owner, "err", "") + data.decode(errors="replace"))[-512:]
+        except (OSError, ValueError):
+            pass
+    threading.Thread(target=drain, daemon=True).start()
+
+
 class Ring:
     """Single-producer/single-consumer sample FIFO with gentle drift control: when the fill
     drifts more than a quarter block from the target, read() resamples n+1 or n-1 samples into n
@@ -956,6 +975,7 @@ class Capture(threading.Thread):
                    "--stream-name=" + self.name]
             try:
                 self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                drain_errors(self.proc, self)
             except OSError:
                 return
             # If the server rejected float32, restart as s16le once
@@ -965,6 +985,7 @@ class Capture(threading.Thread):
                 cmd[cmd.index("--format=float32le")] = f"--format={fmt}"
                 try:
                     self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    drain_errors(self.proc, self)
                 except OSError:
                     return
             nbytes = BLOCK * bps
@@ -1003,6 +1024,8 @@ class Playback(threading.Thread):
         self.err = ""
         self.restarts = 0
         self.last_write = 0.0
+        self.write_started = 0.0
+        self.stalls = 0
 
     def stream_state(self):
         if self.state == "error":
@@ -1018,6 +1041,7 @@ class Playback(threading.Thread):
                 cmd.append("--channel-map=front-left,front-right")
             try:
                 self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+                drain_errors(self.proc, self)
             except OSError as e:
                 self.state, self.err = "error", str(e)
                 log(f"{self.name_}: OUTPUT stream failed to start: {e}")
@@ -1032,17 +1056,15 @@ class Playback(threading.Thread):
                     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2")
                     if self.channels > 1:
                         pcm = np.repeat(pcm, self.channels)   # same voice in every channel
+                    self.write_started = time.monotonic()
                     self.proc.stdin.write(pcm.tobytes())
                     self.proc.stdin.flush()
                     self.last_write = time.monotonic()
+                    self.write_started = 0.0
             except (BrokenPipeError, OSError, ValueError):
-                pass
+                self.write_started = 0.0
             self.kill()
             if not self.stop:
-                try:
-                    self.err = (self.proc.stderr.read() or b"").decode(errors="replace").strip()[-200:]
-                except (OSError, ValueError):
-                    self.err = ""
                 self.state = "error"
                 self.restarts += 1
                 if self.restarts <= 3 or self.restarts % 30 == 0:
@@ -1141,6 +1163,11 @@ class Helper:
         self.last_hello = time.monotonic()
         self.running = True
         self.lock = threading.Lock()
+        self.stream_lock = threading.Lock()
+        self.control_event = threading.Event()
+        self.control_thread = None
+        self.transport_mode = self.cfg.get("resilient_audio", True)
+        self.speakers_dirty = False
         self.mock = {s: MockTalker(i + 3, 2.6 + i * 0.9, 0.45) for i, s in enumerate(SEATS)} if args.mock else {}
         self.ticks = 0
         self.late = 0
@@ -1173,17 +1200,58 @@ class Helper:
             self.msg = "could not create the falcon_game sink"
             return False
         self.pulse.load("module-null-sink", f"sink_name={MC_SINK}", f"sink_properties={desc_m}", f"rate={RATE}", "channels=1")
-        self.in_rings["game"] = Ring()
-        self.in_rings["mc"] = Ring()
-        self.caps["game"] = Capture(GAME_SINK + ".monitor", self.in_rings["game"], "game")
-        self.caps["mc"] = Capture(MC_SINK + ".monitor", self.in_rings["mc"], "mc")
-        for c in self.caps.values():
-            c.start()
+        self._monitor_streams()
         self._speakers()
         self.rescan()
         self.ok = True
         self.msg = "running on " + self.server
         return True
+
+    def _monitor_streams(self):
+        target, capture, _ = transport(self.cfg)
+        for name, source in (("game", GAME_SINK), ("mc", MC_SINK)):
+            ring = Ring(target=RATE * target // 1000)
+            cap = Capture(source + ".monitor", ring, name, latency_ms=capture)
+            with self.stream_lock:
+                old = self.caps.get(name)
+                self.in_rings[name], self.caps[name] = ring, cap
+            if old:
+                old.close()
+            cap.start()
+
+    def control_loop(self):
+        # Only this worker changes stream routes after initial setup. Never hold
+        # stream_lock during pactl, child shutdown/start or logging.
+        next_scan = 0.0
+        while self.running:
+            requested = self.control_event.wait(0.2)
+            self.control_event.clear()
+            if not self.running:
+                break
+            mode = self.cfg.get("resilient_audio", True)
+            if mode != self.transport_mode:
+                self.transport_mode = mode
+                if not self.args.mock:
+                    self._monitor_streams()
+                self.routes = {}  # rebuild seat streams with the new transport
+                requested = True
+            with self.stream_lock:
+                players = list(self.plays.values())
+            for pl in players:
+                if pl.write_started and time.monotonic() - pl.write_started > 2.0:
+                    pl.stalls += 1
+                    pl.write_started = 0.0
+                    pl.kill()  # releases blocked pipe writer; its own thread restarts
+            if requested or time.monotonic() >= next_scan:
+                self.rescan()
+                if self.speakers_dirty:
+                    self.speakers_dirty = False
+                    self._speakers()
+                next_scan = time.monotonic() + 3.0
+                if time.monotonic() - getattr(self, "_transport_log_t", 0.0) > 10.0:
+                    self._transport_log_t = time.monotonic()
+                    st = self.status()
+                    log("transport:", st["transport"], "late=", st["late"], "streams=", st["streams"], "write_stalls=", st["write_stalls"])
 
     def _speakers(self):
         for m in list(getattr(self, "_spk_mods", [])):
@@ -1204,6 +1272,7 @@ class Helper:
 
     def rescan(self):
         if self.args.mock:
+            self._rematch()
             return
         sinks, sources = self.pulse.list("sinks"), self.pulse.list("sources")
         self.devs = headsets_from(sinks, sources)
@@ -1237,6 +1306,8 @@ class Helper:
                     if picked[(s, kind)]:
                         used.add(picked[(s, kind)])
         for s in SEATS:
+            if not self.running:
+                return
             hs = new.get(s) or {}
             src = picked[(s, "in")] if (s, "in") in picked else resolve(str(self.cfg.get(f"{s}_in", "")), getattr(self, "inputs", []), dsrc, used_in)
             snk = picked[(s, "out")] if (s, "out") in picked else resolve(str(self.cfg.get(f"{s}_out", "")), getattr(self, "outputs", []), dsink, used_out)
@@ -1274,42 +1345,53 @@ class Helper:
                    "routes": {s: list(r) for s, r in getattr(self, "routes", {}).items()}})
 
     def _attach(self, seat, dev):
-        for d in (self.caps, self.plays):
-            if seat in d:
-                d.pop(seat).close()
-        self.in_rings.pop(seat, None)
-        self.out_rings.pop(seat, None)
-        if dev is None or self.args.mock:
-            return
-        if dev.get("source"):
-            spec = next((d.get("spec", "") for d in getattr(self, "inputs", []) if d["name"] == dev["source"]), "?")
-            # a muted or suspended source records pure silence: wake it (logged)
-            if not dev["source"].startswith("@"):
-                run(["pactl", "suspend-source", dev["source"], "0"])
-                rc, out = run(["pactl", "get-source-mute", dev["source"]])
-                if "yes" in out:
-                    run(["pactl", "set-source-mute", dev["source"], "0"])
-                    log(f"{seat}: source was MUTED in the system mixer; unmuted it")
-            log(f"{seat}: INPUT {dev['source']}  native [{spec}] -> captured as float32/s16le 48000 Hz mono (server converts)")
-            self.in_rings[seat] = Ring()
-            self.caps[seat] = Capture(dev["source"], self.in_rings[seat], seat)
-            self.caps[seat].start()
-        if dev.get("sink"):
-            o = next((d for d in getattr(self, "outputs", []) if d["name"] == dev["sink"]), {})
-            ch = sink_channels(o.get("spec", "")) if o else 2
-            if not dev["sink"].startswith("@"):
-                run(["pactl", "suspend-sink", dev["sink"], "0"])
-                if "yes" in run(["pactl", "get-sink-mute", dev["sink"]])[1]:
-                    run(["pactl", "set-sink-mute", dev["sink"], "0"])
-                    log(f"{seat}: sink was MUTED in the system mixer; unmuted it")
-                vol = re.findall(r"(\d+)%", run(["pactl", "get-sink-volume", dev["sink"]])[1])
-                if vol and max(int(v) for v in vol) < 5:
-                    log(f"{seat}: WARNING sink volume is {max(int(v) for v in vol)}% in the system mixer")
-            log(f"{seat}: OUTPUT {dev['sink']}  native [{o.get('spec', '?')}] state {o.get('state', '?')} -> s16le 48000 Hz {ch}ch  quality={self.cfg.get('audio_quality', 'high')}")
-            self.out_rings[seat] = Ring()
-            self.plays[seat] = Playback(dev["sink"], self.out_rings[seat], seat, channels=ch)
-            self.plays[seat].start()
-        log(f"{seat}: {dev['label']}")
+        target, capture, playback = transport(self.cfg)
+        in_ring = out_ring = cap = play = None
+        if dev is not None and not self.args.mock:
+            if dev.get("source"):
+                spec = next((d.get("spec", "") for d in getattr(self, "inputs", []) if d["name"] == dev["source"]), "?")
+                # a muted or suspended source records pure silence: wake it (logged)
+                if not dev["source"].startswith("@"):
+                    run(["pactl", "suspend-source", dev["source"], "0"])
+                    rc, out = run(["pactl", "get-source-mute", dev["source"]])
+                    if "yes" in out:
+                        run(["pactl", "set-source-mute", dev["source"], "0"])
+                        log(f"{seat}: source was MUTED in the system mixer; unmuted it")
+                log(f"{seat}: INPUT {dev['source']}  native [{spec}] -> captured as float32/s16le 48000 Hz mono (server converts)")
+                in_ring = Ring(target=RATE * target // 1000)
+                cap = Capture(dev["source"], in_ring, seat, latency_ms=capture)
+
+            if dev.get("sink"):
+                o = next((d for d in getattr(self, "outputs", []) if d["name"] == dev["sink"]), {})
+                ch = sink_channels(o.get("spec", "")) if o else 2
+                if not dev["sink"].startswith("@"):
+                    run(["pactl", "suspend-sink", dev["sink"], "0"])
+                    if "yes" in run(["pactl", "get-sink-mute", dev["sink"]])[1]:
+                        run(["pactl", "set-sink-mute", dev["sink"], "0"])
+                        log(f"{seat}: sink was MUTED in the system mixer; unmuted it")
+                    vol = re.findall(r"(\d+)%", run(["pactl", "get-sink-volume", dev["sink"]])[1])
+                    if vol and max(int(v) for v in vol) < 5:
+                        log(f"{seat}: WARNING sink volume is {max(int(v) for v in vol)}% in the system mixer")
+                log(f"{seat}: OUTPUT {dev['sink']}  native [{o.get('spec', '?')}] state {o.get('state', '?')} -> s16le 48000 Hz {ch}ch  quality={self.cfg.get('audio_quality', 'high')}")
+                out_ring = Ring(target=RATE * target // 1000)
+                play = Playback(dev["sink"], out_ring, seat, latency_ms=playback, channels=ch)
+
+
+
+        with self.stream_lock:
+            old_cap, old_play = self.caps.pop(seat, None), self.plays.pop(seat, None)
+            self.in_rings.pop(seat, None)
+            self.out_rings.pop(seat, None)
+            if cap:
+                self.caps[seat], self.in_rings[seat] = cap, in_ring
+            if play:
+                self.plays[seat], self.out_rings[seat] = play, out_ring
+        for old in (old_cap, old_play):
+            if old:
+                old.close()
+        for new in (cap, play):
+            if new:
+                new.start()
 
     # ---------------------------------------------------------------- UDP
     def send(self, obj):
@@ -1346,7 +1428,7 @@ class Helper:
                 play_once(dev["sink"], self.engine.snd.ident())
             self.send({"type": "ident", "device": dev["id"] if dev else ""})
         elif cmd == "rescan":
-            self.rescan()
+            self.control_event.set()
         elif cmd == "record":
             with self.lock:
                 self.rec = [str(msg.get("path", "")), [], int(float(msg.get("max_s", 90)) * RATE / BLOCK)]
@@ -1404,10 +1486,9 @@ class Helper:
             spk = "speakers" in values and bool(values["speakers"]) != bool(self.cfg.get("speakers"))
             self.cfg.update(values)
             self.engine.set_cfg(values)
-        if changed_dev:
-            self._rematch()
-        if spk:
-            self._speakers()
+        if changed_dev or "resilient_audio" in values or spk:
+            self.speakers_dirty |= spk
+            self.control_event.set()
 
     def udp_loop(self):
         while self.running:
@@ -1426,14 +1507,16 @@ class Helper:
 
     # ---------------------------------------------------------------- audio loop
     def tick(self):
+        with self.stream_lock:
+            inputs, outputs = dict(self.in_rings), dict(self.out_rings)
         mics = {}
         for s in SEATS:
             if self.mock:
                 mics[s] = self.mock[s].block()
-            elif s in self.in_rings:
-                mics[s] = self.in_rings[s].read(BLOCK)
-        game = self.in_rings["game"].read(BLOCK) if "game" in self.in_rings else None
-        mc = self.in_rings["mc"].read(BLOCK) if "mc" in self.in_rings else None
+            elif s in inputs:
+                mics[s] = inputs[s].read(BLOCK)
+        game = inputs["game"].read(BLOCK) if "game" in inputs else None
+        mc = inputs["mc"].read(BLOCK) if "mc" in inputs else None
         with self.lock:
             outs = self.engine.process(mics, game, mc)
             if self.rec is not None:
@@ -1447,8 +1530,8 @@ class Helper:
             pk = float(np.max(np.abs(y))) if len(y) else 0.0
             self.out_pk[s] = max(pk, self.out_pk.get(s, 0.0) * 0.93)       # ~150 ms fall
             self.out_max[s] = max(pk, self.out_max.get(s, 0.0))
-            if s in self.out_rings:
-                self.out_rings[s].write(y)
+            if s in outputs:
+                outputs[s].write(y)
 
     def status(self):
         st = self.engine.status()
@@ -1459,11 +1542,20 @@ class Helper:
             st[s]["out_level"] = round(db(self.out_pk.get(s, 0.0)), 1)
             st[s]["out_state"] = self.out_state(s)
             st[s]["out_sink"] = (getattr(self, "routes", {}).get(s) or ("", ""))[1]
-        xr = sum(r.underruns for r in self.in_rings.values()) + sum(r.underruns for r in self.out_rings.values())
+        with self.stream_lock:
+            rings = {**{"in:" + k: r for k, r in self.in_rings.items()}, **{"out:" + k: r for k, r in self.out_rings.items()}}
+            players = dict(self.plays)
+        streams = {k: {"underruns": r.underruns, "overruns": r.overruns,
+                       "fill_ms": round(r.fill() * 1000 / RATE), "target_ms": round(r.target * 1000 / RATE)}
+                   for k, r in rings.items()}
+        xr = sum(r.underruns for r in rings.values())
         return {"type": "status", "ok": self.ok, "msg": self.msg, "server": self.server, "seats": st,
                 "allcall": self.engine.allcall, "xruns": xr, "late": self.late, "mock": bool(self.args.mock),
                 "game_sink": GAME_SINK if self.ok and not self.args.mock else "", "mc_sink": MC_SINK if self.ok and not self.args.mock else "",
-                "latency_ms": 55 if not self.args.mock else 0}
+                "transport": "resilient" if self.transport_mode else "low-latency",
+                "buffer_target_ms": transport(self.cfg)[0], "streams": streams,
+                "write_stalls": {k: p.stalls for k, p in players.items()},
+                "requested_capture_ms": transport(self.cfg)[1], "requested_playback_ms": transport(self.cfg)[2]}
 
     def parent_alive(self):
         if not self.parent:
@@ -1486,10 +1578,12 @@ class Helper:
         log(self.msg)
         if self.args.setup_only:
             return 0 if started else 1
+        if started:
+            self.control_thread = threading.Thread(target=self.control_loop, daemon=True, name="ics-control")
+            self.control_thread.start()
         period = BLOCK / RATE
         nxt = time.monotonic()
         last_status = 0.0
-        last_scan = time.monotonic()
         try:
             while self.running:
                 now = time.monotonic()
@@ -1508,26 +1602,19 @@ class Helper:
                 if now - last_status > 1 / 15:
                     last_status = now
                     self.send(self.status())
-                    if started and now - getattr(self, "_lvl_t", 0.0) > 10.0:
-                        self._lvl_t = now
-                        st = self.engine.status()
-                        log("levels: " + "  ".join(f"{s}={st[s].get('level', -90):.0f}dB{'(open)' if st[s].get('open') else ''}"
-                                                   f"[{(getattr(self, 'routes', {}).get(s) or ('', ''))[0] or '-'}]" for s in SEATS))
-                        log("outputs: " + "  ".join(f"{s}={db(self.out_max.get(s, 0.0)):.0f}dB {self.out_state(s)}"
-                                                    f"[{(getattr(self, 'routes', {}).get(s) or ('', ''))[1] or '-'}]" for s in SEATS))
-                        self.out_max = {}
                     if not self.parent_alive():
                         log("game exited; stopping")
                         break
-                if started and now - last_scan > 3.0:          # hot-plug: re-match headsets
-                    last_scan = now
-                    self.rescan()
+
         finally:
             self.shutdown()
         return 0
 
     def shutdown(self):
         self.running = False
+        self.control_event.set()
+        if self.control_thread:
+            self.control_thread.join()  # bounded pactl subprocess timeouts; no worker races cleanup
         for d in (self.caps, self.plays):
             for t in d.values():
                 t.close()

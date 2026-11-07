@@ -368,13 +368,20 @@ func _build_ics(page: Control) -> void:
 			return
 		var t := "State: %s\n" % Ics.state_text
 		if Ics.ok():
-			t += "Sound server: %s · latency ≈ %d ms · dropouts %d\n" % [str(Ics.status.get("server", "")), int(Ics.status.get("latency_ms", 0)), int(Ics.status.get("xruns", 0))]
+			t += "Sound server: %s · buffer target %d ms (not measured latency) · dropouts %d · late %d\n" % [str(Ics.status.get("server", "")), int(Ics.status.get("buffer_target_ms", 0)), int(Ics.status.get("xruns", 0)), int(Ics.status.get("late", 0))]
+		var streams: Dictionary = Ics.status.get("streams", {})
+		for key in streams:
+			if str(key).begins_with("out:"):
+				var stream: Dictionary = streams[key]
+				t += "%s buffer %d ms · under %d / over %d · stalls %d\n" % [str(key), int(stream.get("fill_ms", 0)), int(stream.get("underruns", 0)), int(stream.get("overruns", 0)), int(Ics.status.get("write_stalls", {}).get(str(key).trim_prefix("out:"), 0))]
 		t += "Log: ~/.local/share/filament-falcon/ics.log"
 		stl.text = t
 	var g := panel(h, "RADIO / MIX", true, false)
 	var gt := hbox(g, 8)
 	for t: Array in [["radio_fx", "RADIO FX"], ["static", "STATIC"], ["squelch_tail", "SQUELCH"], ["beeps", "CLICK+ROGER"], ["speakers", "ROOM SPEAKERS"]]:
 		gt.add_child(setting_toggle("ics", str(t[0]), str(t[1]), 15, 44))
+	g.add_child(setting_toggle("ics", "resilient_audio", "RESILIENT AUDIO", 15, 44))
+	g.add_child(label("ON: 100 ms buffers, more voice/sidetone delay. OFF: low latency (30 ms buffers). Independent of AUDIO QUALITY.", 14, C_DIM))
 	var gq := hbox(g, 8)
 	gq.add_child(label("AUDIO QUALITY", 16, C_DIM, false))
 	for q: String in ["low", "normal", "high", "hifi"]:

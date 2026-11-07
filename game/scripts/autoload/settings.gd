@@ -74,6 +74,7 @@ const DEFAULTS := {
 		"pilot_in": "none", "pilot_out": "none", "ops_in": "none", "ops_out": "none",
 		"commander_in": "none", "commander_out": "none", "eva_in": "none", "eva_out": "none",
 		"radio_fx": true, "static": true, "squelch_tail": true, "beeps": true, "speakers": true,
+		"resilient_audio": true,  # larger transport buffers, independent of DSP quality
 		"audio_quality": "high",   # low | normal | high | hifi  (ICS radio band / compression / static)
 		"mc_vol": 0.9, "allcall_duck": 0.25,
 		"pilot_mode": "vox", "pilot_vox_db": -38.0, "pilot_attack_ms": 25.0, "pilot_hang_ms": 600.0,
