@@ -122,7 +122,7 @@ func _run() -> void:
 		for d in [0.002, 0.005, 0.05, 100.0, 1e7, SolarView.AU_KM * 500.0]:
 			var cc := sv.clip_planes_for_dist(d)
 			var proj := Projection.create_perspective(70.0, 16.0 / 9.0, cc["near"], cc["far"])
-			_check_projection(proj, "SOLAR %s zoom %.4g" % [vehicle, d])
+			_check_projection(proj, "SOLAR %s zoom %.4f" % [vehicle, d])
 	sv.follow_id = ""
 	# Same off-axis math used by twin OTW cameras (including toe-in and EVA near).
 	var dm := DisplayManager.new()
