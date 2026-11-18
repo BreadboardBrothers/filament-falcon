@@ -14,11 +14,13 @@ on Pad 2. After you light the engines, the flight flies itself so everyone can w
 3. After liftoff, sticks and triggers no longer fly the ship. You can still look around
    and switch **VIEW** (cockpit / chase). The chase view follows the action: staging,
    the booster’s divert and destruct, PEZ deploy, plasma, the flip and the catch.
-4. Optional terrain: on Yves’s PC, Commander → **AREAS** → preset **Starbase TX** → add
-   and run, or `python3 game/tools/area_manager.py add starbase --run`. That builds a
-   local ~20 m pack of the Boca Chica coast (Highway 4, the beach, South Padre). The
-   mission works without it (global Earth + the procedural Starbase). Do not run that
-   download from the agent box; it is meant for the game PC.
+4. Terrain pack: the next normal `./run.sh` (not `--offline` / `--no-install`) queues the
+   **Starbase TX** area in the background and starts the game immediately. Open
+   Commander → **AREAS**: you should see **Starbase TX** (`starbase`) go from queued to
+   running (dem / imagery / osm / build, progress and MB downloaded), then pack ✓ when
+   it is ready. This happens once; if you delete the area later it will not be re-added.
+   The mission works without the pack (global Earth + the procedural Starbase). Headless
+   tests and the agent box never download it.
 
 ## What Flight 15 really did
 

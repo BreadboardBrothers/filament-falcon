@@ -158,6 +158,7 @@ Each line is stored at up to three Douglas-Peucker levels (0.006°, 0.001°, 0.0
   - `XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --map-layer-test` (AREAS map layer: fallback button, background load, tiers and names by zoom, culling).
   - `python3 tools/test_map_layer.py` (map_layer.py on a tiny generated .osm.pbf; needs pyosmium).
   - A tiny offline region: `python3 tools/build_region.py --name t --bbox=… --osm file.json --flat-dem --out DIR`.
+  - `bash game/tools/test_ensure_default_areas.sh` (one-time Starbase offer: add once, no re-add after delete, offline/no-install skip; no downloads).
 
 ## Still approximate
 
@@ -167,4 +168,4 @@ Each line is stored at up to three Douglas-Peucker levels (0.006°, 0.001°, 0.0
 - LOD performance and seams have only been checked headless (no GPU profiling yet).
 
 
-The **Starbase TX** area preset (`game/tools/area_presets.json`, id `starbase`) covers Boca Chica, the pads, Highway 4 and the nearby Gulf beach. Build it on the game PC with Commander → AREAS or `python3 game/tools/area_manager.py add starbase --run`. Flight 15 uses this pack when present; it is not downloaded automatically by the agent or by headless tests.
+The **Starbase TX** area preset (`game/tools/area_presets.json`, id `starbase`) covers Boca Chica, the pads, Highway 4 and the nearby Gulf beach. A normal `game/run.sh` launch offers it once: if `starbase` is not already in `~/.local/share/filament-falcon/areas/`, it is queued and built in the background (Commander → AREAS shows the job). The offer is recorded in `areas/.auto_presets.json`, so deleting the area later does not queue it again. `--offline`, `--no-install` and `--check-deps` skip the offer and do not write that marker. Flight 15 uses the pack when it is ready; it works without it. The agent box and headless tests never download it. You can still add it by hand with Commander → AREAS or `python3 game/tools/area_manager.py add starbase --run`.

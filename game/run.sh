@@ -12,6 +12,7 @@
 #                                         focus again (same as FALCON_TOUCH_ISOLATE=0)
 #        ./run.sh --check-deps       report missing dependencies without installing/launching
 #        ./run.sh --no-install       fail instead of installing missing dependencies
+#        ./run.sh --offline           skip updates, installs, and the one-time Starbase area offer
 #        ./run.sh --fetch-assets     explicitly fetch optional Earth/Moon/OSM assets
 #        ./run.sh --no-fetch          skip the first-run Earth/Moon/OSM download (tools/fetch_assets.sh)
 #        ./run.sh --no-ics                no intercom helper (headsets off)
@@ -87,6 +88,9 @@ fi
 source tools/runtime_deps.sh
 falcon_runtime_deps || exit 1
 [ "$DEPS_MODE" != check ] || exit 0
+# One-time Starbase TX area pack on a normal launch; background, never blocks.
+source tools/ensure_default_areas.sh
+falcon_ensure_default_areas || true
 # Re-import on a fresh clone, or after a git pull changed any script/scene/shader (a stale
 # class cache causes "Identifier ... not declared" parse errors and a broken game).
 STAMP=.godot/.falcon_import_stamp

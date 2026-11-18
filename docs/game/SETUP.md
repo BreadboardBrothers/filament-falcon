@@ -140,7 +140,8 @@ skip with an actionable message. It never stashes, resets, rebases or
 requests Git credentials. When commits change, the updated launcher re-execs once
 with the original arguments before checking dependencies.
 
-`--no-update` skips only Git updates. `--offline` skips updates/fetching and disables
-dependency installation. `--check-deps` and test/screenshot invocations also skip updates. A normal
-`--headless` launch or `--no-install` still attempts an update (the latter only
-disables dependency installation). No large asset downloads are enabled by auto-update.
+`--no-update` skips only Git updates. `--offline` skips updates/fetching, disables
+dependency installation, and skips the one-time Starbase TX area offer. `--no-install`
+(or `FALCON_NO_INSTALL=1`) also skips that offer. `--check-deps` and test/screenshot
+invocations skip updates and the offer. A normal `--headless` launch or `--no-install`
+still attempts a git pull. No large asset downloads are enabled by auto-update.
