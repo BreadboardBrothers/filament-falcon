@@ -36,6 +36,8 @@ const ALL := [
 		"obj": "Find the beacon, braking burn, descend and land softer than 3 m/s.", "crew": "PILOT burn + hover · OPS scanner + RCS", "inject": "All four failures"},
 	{"key": "flag", "kind": "mission", "id": "flag", "cat": "LANDING", "art": "flag", "diff": "★★★", "mins": "12-18",
 		"obj": "The Moon landing, then a MOONWALK: plant our flag and collect moon rocks. (Moon only: Mars is not in the game yet.)", "crew": "PILOT + OPS land · EVA player walks", "inject": "All failures during the landing, Abort EVA"},
+	{"key": "flight15", "kind": "mission", "id": "flight15", "cat": "LANDING", "art": "reentry", "diff": "★☆☆", "mins": "watch, ~15",
+		"obj": "Flight 15 from Starbase, TX: light the engines, then watch hot staging, the booster's Gulf abort, 26 Starlink V3 through the PEZ door, reentry, flip and the first ship Mechazilla catch. Crewed cockpit; the flight flies itself after liftoff.", "crew": "PILOT launch only (ARM + IGNITION + throttle) · everyone watches · COMMANDER START / VIEW", "inject": "None mid-flight (watch the show)"},
 	{"key": "reentry", "kind": "mission", "id": "reentry", "cat": "LANDING", "art": "reentry", "diff": "★★★", "mins": "6-10",
 		"obj": "Through the plasma, find the runway beacon, glide the boxes, land and brake.", "crew": "PILOT glide · OPS shields + beacon", "inject": "All four failures"},
 	{"key": "splashdown", "kind": "mission", "id": "splashdown", "cat": "LANDING", "art": "splash", "diff": "★☆☆", "mins": "5-7",

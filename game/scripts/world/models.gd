@@ -283,6 +283,18 @@ static func satellite() -> Node3D:
 	return root
 
 
+## Starlink V3 (Flight 15 flew 26 operational sats, including 3 with cameras).
+static func starlink_v3() -> Node3D:
+	var root := Node3D.new()
+	var body := ProcGen.mat(Color(0.12, 0.13, 0.15), 0.4, 0.45)
+	var gold := ProcGen.mat(Color(0.75, 0.6, 0.25), 0.6, 0.35)
+	var panel := ProcGen.shader_mat("res://shaders/solar_panel.gdshader")
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(2.4, 0.18, 1.35)), body))
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(2.2, 0.04, 1.2)), panel, Vector3(0, 0.12, 0)))
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.35, 0.12, 0.35)), gold, Vector3(0.8, -0.08, 0)))
+	return root
+
+
 static func pod() -> Node3D:
 	var root := Node3D.new()
 	root.add_child(ProcGen.mesh_node(ProcGen.cyl(0.6, 1.4, 2.0, 24), ProcGen.mat(Color(1.0, 0.45, 0.1), 0.1, 0.5)))
@@ -508,6 +520,52 @@ static func pad() -> Node3D:
 	var smk := pad_smoke()
 	smk.position = Vector3(0, 3.0, 40.0)
 	root.add_child(smk)
+	return root
+
+
+## Starbase / Boca Chica around the existing Mechazilla pad (OLP-2). Procedural and
+## recognisable, not photoreal: second tower, tank farm, high bays, Starfactory / HQ,
+## Highway 4 inland (west, −X) and a beach strip toward the Gulf (east, +X).
+static func starbase() -> Node3D:
+	var root := pad()
+	root.name = "Starbase"
+	var concrete := _hull(Color(0.58, 0.57, 0.55), 0.12, 0.0, 0.92)
+	var steel := ProcGen.mat(Color(0.78, 0.26, 0.1), 0.55, 0.45)
+	var grey := ProcGen.mat(Color(0.5, 0.52, 0.55), 0.8, 0.4)
+	var white := _white()
+	var sand := ProcGen.mat(Color(0.82, 0.74, 0.55), 0.0, 0.95)
+	var asphalt := ProcGen.mat(Color(0.18, 0.18, 0.17), 0.0, 0.9)
+	var hq := ProcGen.mat(Color(0.22, 0.23, 0.25), 0.15, 0.55)
+	var glass := ProcGen.mat(Color(0.15, 0.2, 0.28, 0.85), 0.4, 0.08)
+	# Beach / Gulf to the east of OLP-2
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(220, 1.2, 500)), sand, Vector3(180, 0.2, 0)))
+	# Highway 4 heading inland (west)
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(900, 0.4, 12)), asphalt, Vector3(-500, 1.1, 40)))
+	for i in 8:
+		root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(4, 0.05, 0.4)), white, Vector3(-80 - i * 100.0, 1.32, 40)))
+	# Tank farm
+	for k in 6:
+		var tx := -90.0 - (k % 3) * 22.0
+		var tz := -70.0 - int(k / 3) * 22.0
+		root.add_child(ProcGen.mesh_node(ProcGen.sphere(8.0, 24, 12), white, Vector3(tx, 9.0, tz)))
+	for k in 4:
+		root.add_child(ProcGen.mesh_node(ProcGen.cyl(5.0, 5.0, 16.0, 20), white, Vector3(-70.0 - k * 16.0, 9.0, 90)))
+	# Mega Bay / high bay / Gigabay
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(90, 55, 70)), grey, Vector3(-240, 28, -90)))
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(80, 48, 64)), grey, Vector3(-240, 25, 90)))
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(40, 30, 40)), steel, Vector3(-180, 16, 0)))
+	# Starfactory / SpaceX HQ at Starbase (long production hall + office strip)
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(260, 22, 70)), hq, Vector3(-420, 12, -40)))
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(200, 10, 4)), glass, Vector3(-400, 14, -3)))
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(40, 10, 30)), white, Vector3(-300, 16, -40)))
+	# Second Mechazilla (Pad 1-style), along the coast
+	var t2 := Vector3(20, 0, -380)
+	for i in 14:
+		var y := 2.0 + i * 4.0
+		for c: Vector3 in [Vector3(-3, 0, -3), Vector3(3, 0, -3), Vector3(-3, 0, 3), Vector3(3, 0, 3)]:
+			root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.4, 4.0, 0.4)), steel, t2 + Vector3(14, y + 2.0, 0) + c))
+	root.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(7, 3, 7)), white, t2 + Vector3(14, 60, 0)))
+	root.add_child(ProcGen.mesh_node(ProcGen.cyl(8.0, 9.0, 3.0, 32), concrete, t2 + Vector3(0, 1.0, 0)))
 	return root
 
 

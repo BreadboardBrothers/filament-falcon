@@ -70,17 +70,18 @@ func _build() -> void:
 	var flap_mat := ProcGen.bump_priority(ProcGen.shader_mat("res://shaders/hull.gdshader", {"base_color": Color(0.08, 0.08, 0.09), "metallic_base": 0.1,
 		"rough_base": 0.7, "stripes": 0.0, "belly_tiles": 1.0, "panel_scale": 3.0}), 1)
 	for sx: float in [-1.0, 1.0]:
+		var side := "L" if sx < 0.0 else "R"
 		var fwd := PackedVector2Array([Vector2(0.0, -5.6), Vector2(1.5 * sx, -5.0), Vector2(1.5 * sx, -3.9), Vector2(0.0, -3.4)])
 		if sx > 0.0:
 			fwd.reverse()
 		var ff := ProcGen.mesh_node(ProcGen.extrude(fwd, 0.14), flap_mat, Vector3(sx * 1.62, -0.42, 0))
-		ff.name = "FwdFlap"
+		ff.name = "FwdFlap" + side
 		add_child(ff)
 		var aft := PackedVector2Array([Vector2(0.0, 3.4), Vector2(2.1 * sx, 4.6), Vector2(2.1 * sx, 6.9), Vector2(0.0, 7.0)])
 		if sx > 0.0:
 			aft.reverse()
 		var af := ProcGen.mesh_node(ProcGen.extrude(aft, 0.18), flap_mat, Vector3(sx * 1.92, -0.42, 0))
-		af.name = "AftFlap"
+		af.name = "AftFlap" + side
 		add_child(af)
 		# flap hinge fairings
 		add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.3, 0.3, 1.8)), hull_mat, Vector3(sx * 1.55, -0.3, -4.5)))
@@ -200,6 +201,12 @@ func _build() -> void:
 	add_child(ProcGen.mesh_node(ProcGen.box(Vector3(2.5, 0.1, 5.8)), bay_mat, Vector3(0, 0.85, 1.5)))
 	cargo_root = Node3D.new()
 	add_child(cargo_root)
+	# PEZ dispenser slot door (starboard payload bay) — used by Flight 15.
+	var pez := Node3D.new()
+	pez.name = "PezDoor"
+	pez.position = Vector3(1.62, 0.15, 1.1)
+	add_child(pez)
+	pez.add_child(ProcGen.mesh_node(ProcGen.box(Vector3(0.12, 2.3, 4.2)), hull_mat, Vector3(0.06, 0, 0)))
 	# Robotic arm
 	arm_root = Node3D.new()
 	arm_root.position = Vector3(0, 1.75, 1.0)
@@ -404,6 +411,22 @@ func animate(g: Node, dt: float) -> void:
 	# Heat
 	var heat := clampf((sim.hull_temp - 700.0) / 900.0, 0.0, 1.2)
 	hull_mat.set_shader_parameter("heat_glow", heat)
+	# Four independently commanded flaps (body X axis = hinge pitch).
+	var ff_l := get_node_or_null("FwdFlapL") as Node3D
+	var ff_r := get_node_or_null("FwdFlapR") as Node3D
+	var af_l := get_node_or_null("AftFlapL") as Node3D
+	var af_r := get_node_or_null("AftFlapR") as Node3D
+	if ff_l:
+		ff_l.rotation.x = sim.flap_fwd.x
+	if ff_r:
+		ff_r.rotation.x = sim.flap_fwd.y
+	if af_l:
+		af_l.rotation.x = sim.flap_aft.x
+	if af_r:
+		af_r.rotation.x = sim.flap_aft.y
+	var pez_n := get_node_or_null("PezDoor") as Node3D
+	if pez_n:
+		pez_n.rotation.z = -g.pez_door * deg_to_rad(105.0)
 	var pl := clampf(sim.heat_flux / 120000.0, 0.0, 1.5)
 	plasma.visible = pl > 0.02
 	if plasma.visible:

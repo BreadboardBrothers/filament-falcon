@@ -5,7 +5,11 @@ class_name Geo
 ## vectors in the planet's object space. Geo convention: lat/lon in degrees,
 ## dir = (cos lat sin lon, sin lat, -cos lat cos lon)  <=>  equirect u = (lon + 180) / 360.
 
-const KSC := Vector2(28.573, -80.649)          # lat, lon of the game's launch pad
+const KSC := Vector2(28.573, -80.649)          # lat, lon used to orient Earth under the default pad
+const STARBASE := Vector2(25.99677, -97.15799)  # OLP-2, Boca Chica / Starbase, TX
+# Modeled Flight 15 Super Heavy FTS / contingency splashdown: ~34 km east of OLP-2 over the Gulf.
+# Exact official coordinates were not published; this is offshore, away from the coast and towns.
+const F15_FTS := Vector2(26.02, -96.82)
 const ASSET_DIR := "filament-falcon/assets"    # under ~/.local/share
 
 static var _r: Basis
@@ -31,6 +35,12 @@ static func game_from_geo() -> Basis:
 
 static func game_dir(lat: float, lon: float) -> Vector3:
 	return game_from_geo() * geo_dir(lat, lon)
+
+
+## Geographic lat, lon (degrees) of a unit direction in game space.
+static func latlon(dir: Vector3) -> Vector2:
+	var g := game_from_geo().inverse() * dir.normalized()
+	return Vector2(rad_to_deg(asin(clampf(g.y, -1.0, 1.0))), rad_to_deg(atan2(g.x, -g.z)))
 
 
 ## Folder with the downloaded NASA textures + built regions (tools/fetch_assets.sh).

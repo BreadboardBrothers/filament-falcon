@@ -11,6 +11,7 @@ extends Node
 ##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --solar-test           SOLAR ephemeris + view
 ##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --booster-recovery-test  booster RTLS/catch FSM
 ##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --chase-framing-test     chase bezel framing
+##   XDG_DATA_HOME=$(mktemp -d) godot --headless --path game -- --flight15-test          Flight 15 profile + booster FTS
 ##   godot --path game -- --screenshots=DIR     capture the hero shots (use xvfb + lavapipe)
 ##   godot --path game --xr-mode on -- --eva-client   the VR spacewalk client (see EvaClient)
 
@@ -51,6 +52,9 @@ func _ready() -> void:
 		return
 	if Settings.cli.has("chase-framing-test"):
 		add_child(load("res://tests/chase_framing_test.gd").new())
+		return
+	if Settings.cli.has("flight15-test"):
+		add_child(load("res://tests/flight15_test.gd").new())
 		return
 	if Settings.cli.has("ui-fit"):
 		add_child(load("res://tests/ui_fit.gd").new())

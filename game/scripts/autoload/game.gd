@@ -12,12 +12,12 @@ enum State { BRIEFING, ACTIVE, PAUSED, COMPLETE, FAILED }
 const STATE_NAMES := ["BRIEFING", "ACTIVE", "PAUSED", "COMPLETE", "FAILED"]
 
 const MISSION_ORDER := ["launch", "docking", "lunar", "asteroids", "reentry", "sandbox",
-	"iss", "night_pass", "emergency", "splashdown", "rescue", "flag", "captains_log", "signal", "ground_crew", "bedtime"]
+	"iss", "night_pass", "emergency", "splashdown", "rescue", "flag", "captains_log", "signal", "ground_crew", "bedtime", "flight15"]
 const MISSION_TITLES := {"launch": "FIRST LIGHT", "docking": "SPACE HUG", "lunar": "EAGLE EYE",
 	"asteroids": "ROCK HOPPERS", "reentry": "HOMECOMING", "sandbox": "FREE FLIGHT",
 	"iss": "REAL ISS", "night_pass": "CITY LIGHTS", "emergency": "HOUSTON, A PROBLEM", "splashdown": "SPLASHDOWN",
 	"rescue": "CATCH THE SPACEWALKER", "flag": "PLANT THE FLAG", "captains_log": "CAPTAIN'S LOG",
-	"signal": "ALIEN SIGNAL", "ground_crew": "GROUND CREW", "bedtime": "BEDTIME CRUISE"}
+	"signal": "ALIEN SIGNAL", "ground_crew": "GROUND CREW", "bedtime": "BEDTIME CRUISE", "flight15": "FLIGHT 15"}
 const DIFFICULTIES := ["easy", "normal", "hard"]
 const MISSION_SCRIPTS := {
 	"launch": "res://scripts/missions/m_launch.gd",
@@ -36,6 +36,7 @@ const MISSION_SCRIPTS := {
 	"signal": "res://scripts/missions/m_signal.gd",
 	"ground_crew": "res://scripts/missions/m_ground_crew.gd",
 	"bedtime": "res://scripts/missions/m_bedtime.gd",
+	"flight15": "res://scripts/missions/m_flight15.gd",
 }
 
 # ---- universe (real size: 6371 km Earth, real Moon at 384,400 km; see docs/game/REAL_EARTH.md)
@@ -124,7 +125,11 @@ var jump_charge := 0.0
 var jump_phase := 0.0          # >0 while in hyperspace
 var laser_on := false
 var laser_target: Dictionary = {}
-var view_mode := 0             # 0 cockpit, 1 chase
+var view_mode := 0             # 0 cockpit, 1 chase (cinematic follow uses this too)
+var watch_only := false        # after liftoff: Flight 15 flies itself; sticks can't fly the ship
+var cine_follow := ""          # "", "ship", "booster", "pad" — cinematic camera subject
+var cine_style := ""           # chase, side, aft, tower, wide, pez, plasma, flip
+var pez_door := 0.0            # 0 closed, 1 open (Starship PEZ payload door)
 var camera_shake := 0.0
 var cabin_dim := 0.0           # 0 normal .. 1 night-light cabin (bedtime): dims the console + exposure
 var force_eva := ""            # MISSIONS page EVA entry: weave this spacewalk into its host mission
@@ -255,6 +260,10 @@ func load_mission(id: String) -> void:
 	t = 0.0
 	mission_time = 0.0
 	warp = 1.0
+	watch_only = false
+	cine_follow = ""
+	cine_style = ""
+	pad_dir = Vector3(1, 0, 0)    # default pad maps to KSC via Geo
 	state = State.BRIEFING
 	entities.clear()
 	_reset_ship()
@@ -335,6 +344,7 @@ func _reset_systems() -> void:
 	damage_taken = 0.0
 	scanner_age = 999.0
 	cargo_door = 0.0
+	pez_door = 0.0
 	arm_extend = 0.0
 	beam_on = false
 	jump_charge = 0.0
@@ -412,6 +422,36 @@ func remove_entity(e: Dictionary) -> void:
 	game_event.emit("entity_removed", e)
 
 
+## Move the launch pad (and flatten a site) to a unit game-space direction. Used by Flight 15
+## to sit at Starbase OLP-2 without rotating the whole Earth (KSC runway stays in Florida).
+func relocate_pad(dir: Vector3, extra: Dictionary = {}) -> void:
+	pad_dir = dir.normalized()
+	earth.clear_sites()
+	earth.add_site(pad_dir, 1500.0, SITE_ELEV)
+	earth.add_site(runway_dir, 4500.0, SITE_ELEV)
+	for e in entities_of("pad"):
+		e["dir"] = pad_dir
+		e.erase("basis_set")
+		e.merge(extra, true)
+		_place_entity(e)
+
+
+## Floating-origin anchor: debug free-cam, else the cinematic follow subject, else the ship.
+func view_origin() -> BigVec:
+	if slew.active and slew.mode == "cam" and slew.cam_pos != null:
+		return slew.cam_pos
+	if view_mode != 0 and cine_follow in ["booster", "pad"]:
+		var kind := "booster" if cine_follow == "booster" else "pad"
+		var found: Array = entities_of(kind)
+		if not found.is_empty() and found[0].get("pos") != null:
+			return found[0]["pos"]
+	return sim.pos
+
+
+func raise_caution(id: String, text: String) -> void:
+	_set_warning(id, text)
+
+
 func entities_of(kind: String) -> Array:
 	var out := []
 	for e in entities:
@@ -466,7 +506,7 @@ func _place_entity(e: Dictionary) -> void:
 
 
 ## Start autonomous F9 / Starship-style return after staging (boostback → coast → burns → Mechazilla catch).
-func begin_booster_recovery(e: Dictionary) -> void:
+func begin_booster_recovery(e: Dictionary, opts: Dictionary = {}) -> void:
 	e["mode"] = "free"
 	e["recovery"] = "boostback"
 	e["thrust_frac"] = 0.0
@@ -475,6 +515,11 @@ func begin_booster_recovery(e: Dictionary) -> void:
 	e["fins_deployed"] = true
 	e["catch_t"] = 0.0
 	e["recovery_t"] = 0.0
+	e["profile"] = str(opts.get("profile", e.get("profile", "")))
+	e["error"] = ""
+	e["destroyed"] = false
+	if e["profile"] == "flight15":
+		e["fts_dir"] = Geo.game_dir(Geo.F15_FTS.x, Geo.F15_FTS.y).normalized()
 	Voice.say("Booster boostback.", 1)
 
 
@@ -517,7 +562,7 @@ func _booster_burn(e: Dictionary, desire: Vector3, h: float, max_a: float) -> vo
 
 func _update_booster_recovery(e: Dictionary, h: float) -> void:
 	var phase := str(e.get("recovery", ""))
-	if phase == "" or phase == "caught":
+	if phase == "" or phase == "caught" or phase == "destroyed":
 		e["thrust_frac"] = 0.0
 		return
 	e["recovery_t"] = float(e.get("recovery_t", 0.0)) + h
@@ -534,6 +579,18 @@ func _update_booster_recovery(e: Dictionary, h: float) -> void:
 	var vel_rel: Vector3 = e["vel"] - pad.get("vel", Vector3.ZERO)
 	var earth_rel: Vector3 = e["pos"].rel(earth.pos)
 	var alt := earth_rel.length() - earth.radius
+	var flight15 := str(e.get("profile", "")) == "flight15"
+	# Flight 15: divert toward the designated offshore Gulf spot, never the tower.
+	var fts_pos: BigVec = pad["pos"].copy()
+	if flight15:
+		var fd: Vector3 = e.get("fts_dir", Geo.game_dir(Geo.F15_FTS.x, Geo.F15_FTS.y).normalized())
+		var fts_up := fd
+		var fts_r := earth.radius + earth.terrain_height(fts_up) + 8.0
+		fts_pos = earth.pos.copy()
+		fts_pos.add(fts_up * fts_r)
+	var aim_pos: BigVec = fts_pos if (flight15 and phase in ["divert", "landing", "hover", "fts"]) else catch_pos
+	var to_aim: Vector3 = aim_pos.rel(e["pos"])
+	var aim_dist := to_aim.length()
 	match phase:
 		"boostback":
 			e["fins_deployed"] = true
@@ -541,18 +598,49 @@ func _update_booster_recovery(e: Dictionary, h: float) -> void:
 			var hdir := horiz.normalized() if horiz.length() > 10.0 else -vel_rel.slide(up).normalized()
 			var desire := hdir * 280.0 - vel_rel.slide(up) * 0.9 - up * clampf(vel_rel.dot(up), -80.0, 40.0) * 0.3
 			_booster_burn(e, desire, h, 28.0)
-			if e["recovery_t"] > 18.0 or (horiz.length() < 25000.0 and vel_rel.slide(up).dot(hdir) > -40.0):
+			# Flight 15: the boostback burn ended early due to a low fuel mass alarm.
+			var early: bool = flight15 and float(e.get("recovery_t", 0.0)) > (2.0 if test_mode else 8.0)
+			var done: bool = float(e.get("recovery_t", 0.0)) > 18.0 or (horiz.length() < 25000.0 and vel_rel.slide(up).dot(hdir) > -40.0)
+			if early or (done and not flight15):
 				e["recovery"] = "coast"
 				e["recovery_t"] = 0.0
 				e["thrust_frac"] = 0.0
-				Voice.say("Booster coasting.", 1)
+				if early:
+					e["error"] = "low fuel mass alarm"
+					raise_caution("booster_fuel", "Low fuel mass alarm: boostback ended early.")
+					Voice.say("Low fuel mass alarm. Boostback ended early.", 1)
+					game_event.emit("booster_error", {"error": e["error"]})
+				else:
+					Voice.say("Booster coasting.", 1)
 		"coast":
 			e["thrust_frac"] = 0.0
 			_booster_orient(e, -up, h * 0.5)
-			if alt < 90000.0 or dist < 140000.0 or e["recovery_t"] > 90.0:
+			if flight15 and e["recovery_t"] > (0.6 if test_mode else 4.0):
+				# Huot: GNC detected the booster was not in the place it was supposed to be
+				# to proceed with a catch, did an automated abort, headed offshore.
+				e["recovery"] = "divert"
+				e["recovery_t"] = 0.0
+				e["abort"] = true
+				raise_caution("booster_gnc", "GNC abort: booster not in the place it was supposed to be to proceed with a catch. Diverting to the offshore landing location.")
+				Voice.say("Catch aborted. Diverting offshore.", 1)
+				game_event.emit("booster_divert", {"error": str(e.get("error", ""))})
+			elif not flight15 and (alt < 90000.0 or dist < 140000.0 or e["recovery_t"] > 90.0):
 				e["recovery"] = "entry"
 				e["recovery_t"] = 0.0
 				Voice.say("Entry burn.", 1)
+		"divert":
+			# Steer to the designated Gulf splashdown, not the tower and not over land.
+			var fts_up2: Vector3 = e["pos"].rel(earth.pos)
+			if fts_up2.length() > 1.0:
+				fts_up2 = fts_up2.normalized()
+			var horiz2 := to_aim - fts_up2 * to_aim.dot(fts_up2)
+			var desire_d := horiz2.normalized() * 220.0 - vel_rel * 0.8 - fts_up2 * 15.0
+			_booster_burn(e, desire_d, h, 24.0)
+			if aim_dist < 25000.0 or alt < 20000.0 or e["recovery_t"] > (8.0 if test_mode else 80.0):
+				e["recovery"] = "landing"
+				e["recovery_t"] = 0.0
+				e["legs_deployed"] = false
+				Voice.say("Landing burn.", 1)
 		"entry":
 			var desire2 := -vel_rel * 1.1 + to_catch.normalized() * 40.0
 			_booster_burn(e, desire2, h, 22.0)
@@ -562,28 +650,70 @@ func _update_booster_recovery(e: Dictionary, h: float) -> void:
 				e["legs_deployed"] = true
 				Voice.say("Landing burn.", 1)
 		"landing":
-			var desire3 := to_catch * 0.22 - vel_rel * 1.35
-			# Soften vertical slam into chopsticks.
-			desire3 += up * clampf(8.0 - vel_rel.dot(up), -25.0, 35.0)
-			_booster_burn(e, desire3, h, 38.0)
-			_booster_orient(e, -up, h)
-			if dist < 55.0 and vel_rel.length() < 28.0:
-				e["recovery"] = "catching"
+			if flight15:
+				var fup: Vector3 = e["pos"].rel(earth.pos).normalized()
+				var hover_pos := fts_pos.copy()
+				hover_pos.add(fup * 6.0)  # a few metres above the waves
+				var to_h := hover_pos.rel(e["pos"])
+				var desire_h := to_h * 0.35 - vel_rel * 1.4
+				desire_h += fup * clampf(4.0 - vel_rel.dot(fup), -20.0, 30.0)
+				_booster_burn(e, desire_h, h, 38.0)
+				_booster_orient(e, -fup, h)
+				if (to_h.length() < 80.0 and vel_rel.length() < 30.0 and alt < 400.0) or e["recovery_t"] > (6.0 if test_mode else 50.0):
+					e["recovery"] = "hover"
+					e["recovery_t"] = 0.0
+					e["thrust_frac"] = 0.2
+			else:
+				var desire3 := to_catch * 0.22 - vel_rel * 1.35
+				# Soften vertical slam into chopsticks.
+				desire3 += up * clampf(8.0 - vel_rel.dot(up), -25.0, 35.0)
+				_booster_burn(e, desire3, h, 38.0)
+				_booster_orient(e, -up, h)
+				if dist < 55.0 and vel_rel.length() < 28.0:
+					e["recovery"] = "catching"
+					e["recovery_t"] = 0.0
+					e["thrust_frac"] = 0.15
+					Voice.say("Chopsticks ready.", 1)
+				elif e["recovery_t"] > 70.0:
+					# Fail-safe: pad landing.
+					e["mode"] = "landed"
+					e["recovery"] = "caught"
+					e["thrust_frac"] = 0.0
+					e["vel"] = pad.get("vel", Vector3.ZERO)
+					var soft: BigVec = pad["pos"].copy()
+					soft.add((pad.get("basis", Basis.IDENTITY) as Basis) * Vector3(0, 12.0, 0))
+					e["pos"] = soft
+					_booster_orient(e, -up, 1.0)
+					Voice.say("Booster landed.", 1)
+					game_event.emit("booster_caught", e)
+		"hover":
+			# Engines cut off while hovering over the Gulf, then FTS.
+			var blend_h := clampf(e["recovery_t"] / 1.6, 0.0, 1.0)
+			e["thrust_frac"] = lerpf(0.2, 0.0, blend_h)
+			var fup2: Vector3 = e["pos"].rel(earth.pos).normalized()
+			_booster_orient(e, -fup2, h)
+			if blend_h >= 1.0:
+				e["recovery"] = "fts"
 				e["recovery_t"] = 0.0
-				e["thrust_frac"] = 0.15
-				Voice.say("Chopsticks ready.", 1)
-			elif e["recovery_t"] > 70.0:
-				# Fail-safe: pad landing.
-				e["mode"] = "landed"
-				e["recovery"] = "caught"
 				e["thrust_frac"] = 0.0
-				e["vel"] = pad.get("vel", Vector3.ZERO)
-				var soft: BigVec = pad["pos"].copy()
-				soft.add((pad.get("basis", Basis.IDENTITY) as Basis) * Vector3(0, 12.0, 0))
-				e["pos"] = soft
-				_booster_orient(e, -up, 1.0)
-				Voice.say("Booster landed.", 1)
-				game_event.emit("booster_caught", e)
+		"fts":
+			# SpaceX: upon landing burn shutdown, the Super Heavy's FTS was triggered.
+			if e["recovery_t"] < h * 1.5:
+				raise_caution("booster_fts", "Landing burn shutdown. Flight termination system triggered.")
+				Voice.say("Flight termination system. Booster down in the Gulf.", 1)
+				Sfx.explosion()
+				camera_shake = 0.9
+				e["destruct_pos"] = (e["pos"] as BigVec).copy()
+				e["destroyed"] = true
+				game_event.emit("explosion", {"pos": (e["pos"] as BigVec).copy(), "radius": 40.0, "color": Color(1.0, 0.55, 0.2)})
+				game_event.emit("booster_fts", {"pos": (e["pos"] as BigVec).copy()})
+			e["thrust_frac"] = 0.0
+			e["visible"] = e["recovery_t"] < 0.35
+			if e["recovery_t"] > 0.4:
+				e["mode"] = "landed"
+				e["recovery"] = "destroyed"
+				e["visible"] = false
+				e["vel"] = earth.vel
 		"catching":
 			var blend := clampf(e["recovery_t"] / 2.2, 0.0, 1.0)
 			var cur: Vector3 = e["pos"].rel(catch_pos)
@@ -996,8 +1126,9 @@ func _update_systems(dt: float) -> void:
 	sim.rcs_enabled = master_power
 
 	# Cargo doors / arm animation
-	var doors_open := InputHub.on("cargo_doors")
-	cargo_door = move_toward(cargo_door, 1.0 if doors_open else 0.0, dt / 3.0)
+	if not watch_only:
+		var doors_open := InputHub.on("cargo_doors")
+		cargo_door = move_toward(cargo_door, 1.0 if doors_open else 0.0, dt / 3.0)
 	if not InputHub.has_hardware_for("mode_rcs"):
 		pass
 	ops_mode = InputHub.group("ops")
@@ -1060,6 +1191,13 @@ func _check_damage() -> void:
 func _crew_inputs(dt: float) -> void:
 	var avionics: bool = powered.get("avionics", false)
 	var guidance: bool = powered.get("guidance", false)
+	# After Flight 15 liftoff the ship flies itself. The crew may still change views.
+	if watch_only:
+		sim.in_rot = Vector3.ZERO
+		sim.in_trans = Vector3.ZERO
+		if InputHub.just_pressed("view_cycle"):
+			view_mode = (view_mode + 1) % 2
+		return
 	# ---- Pilot
 	sim.in_rot = Vector3(InputHub.axis("pitch"), InputHub.axis("yaw"), InputHub.axis("roll"))
 	var fa := InputHub.group("fa")

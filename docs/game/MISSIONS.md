@@ -23,6 +23,7 @@ The kids get a big **card** on the touchscreen with a few huge buttons. Everythi
 | CAPTAIN'S LOG | RECORD / STOP. The intercom helper mixes the headset voices into `~/.local/share/filament-falcon/captains_log/*.wav`, saved with the last mission's patch and score. Play them back from the MISSIONS page. |
 | ALIEN SIGNAL | SCANNER PING plays a pattern. Copy it with the shape buttons, plus real panel switches on normal and hard. Then fly to the probe. |
 | GROUND CREW | A 4th person opens `http://<pc-ip>:8088` on a phone on the same Wi-Fi and acts as Mission Control: GO, messages, faults, PHOTO RECEIVED. Anyone on the home network can press the buttons. |
+| FLIGHT 15 | Starship Flight 15 from Starbase, TX: light the engines, then watch the fully automatic flight — booster boostback, low fuel mass abort and Gulf FTS, 26 Starlink V3 through the PEZ door, entry, flip and the first ship Mechazilla catch. Optional Starbase area pack from Commander → AREAS. Details in [FLIGHT15.md](FLIGHT15.md). |
 | BEDTIME CRUISE | Night side of Earth, a lullaby, a dimmed cabin, no failures, two gentle taps. |
 
 The EVA entries fly their usual host mission, and the spacewalk is woven in at the end. SPACEWALK NOW starts it right away when the ship is somewhere it is allowed.
@@ -31,3 +32,4 @@ The EVA entries fly their usual host mission, and the spacewalk is woven in at t
 - `-- --smoke-test`: starts and completes every mission, and checks the phone web page.
 - `-- --ui-fit`: checks every page and every MISSIONS entry at 1920×1080 and 1280×720.
 - `-- --iss`: prints where the ISS is now.
+- `-- --flight15-test`: Flight 15 profile (launch input only, then unattended).

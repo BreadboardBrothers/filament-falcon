@@ -65,7 +65,7 @@ Use `--bbox=` with an `=` when the latitude is negative.
 |---|---|---|
 | dem | AWS Terrain Tiles (terrarium z13, ~20 m) | `areas/<id>/dem.bin` (int16, 0.5 m, lat/lon grid, north row first) |
 | imagery | EOX Sentinel-2 cloudless 2020 (z ≤ 13, ~10–20 m) | `areas/<id>/image.jpg` (lat/lon-linear) |
-| osm | the **smallest Geofabrik regional extract** containing the area (from `index-v1.json`; never the planet file). An area across a border uses the provincial or state extracts that cover its land, not the whole country: a box over the middle of the Bay of Fundy uses New Brunswick + Nova Scotia (the Fundy NP preset is all New Brunswick), KSC and Cocoa Beach use Florida, and Halifax uses Nova Scotia. A copy already in `osm/` is reused if it is less than 30 days old. That includes the New Brunswick file `tools/fetch_assets.sh` leaves without a `.meta.json`. After 30 days it is re-checked with If-Modified-Since. | `osm/<region>-latest.osm.pbf`, shared, re-checked monthly |
+| osm | the **smallest Geofabrik regional extract** containing the area (from `index-v1.json`; never the planet file). An area across a border uses the provincial or state extracts that cover its land, not the whole country: a box over the middle of the Bay of Fundy uses New Brunswick + Nova Scotia (the Fundy NP preset is all New Brunswick), KSC and Cocoa Beach use Florida, Starbase TX uses Texas, and Halifax uses Nova Scotia. A copy already in `osm/` is reused if it is less than 30 days old. That includes the New Brunswick file `tools/fetch_assets.sh` leaves without a `.meta.json`. After 30 days it is re-checked with If-Modified-Since. | `osm/<region>-latest.osm.pbf`, shared, re-checked monthly |
 | build | `build_region.py` on that extract (`--pbf-url` once per extract) | `assets/regions/<id>/` (3D detail) + the water mask `areas/<id>/water.bin` |
 
 After the DEM step the pack is already usable; imagery and water refine it. Without the OSM build, the water mask is the sea (DEM ≤ 0).
@@ -165,3 +165,6 @@ Each line is stored at up to three Douglas-Peucker levels (0.006°, 0.001°, 0.0
 - Roofs are simple gabled or hipped. Building heights use Atlantic Canada defaults when OSM has no tags. Bridges are flat.
 - Pack imagery only covers areas you have generated. Elsewhere it is Blue Marble (~500 m per pixel at 16k).
 - LOD performance and seams have only been checked headless (no GPU profiling yet).
+
+
+The **Starbase TX** area preset (`game/tools/area_presets.json`, id `starbase`) covers Boca Chica, the pads, Highway 4 and the nearby Gulf beach. Build it on the game PC with Commander → AREAS or `python3 game/tools/area_manager.py add starbase --run`. Flight 15 uses this pack when present; it is not downloaded automatically by the agent or by headless tests.

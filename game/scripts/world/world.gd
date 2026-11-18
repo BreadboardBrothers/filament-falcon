@@ -288,6 +288,8 @@ func _make_entity_node(e: Dictionary) -> Node3D:
 			return Models.booster()
 		"satellite":
 			return Models.satellite()
+		"starlink":
+			return Models.starlink_v3()
 		"pod":
 			return Models.pod()
 		"crystal":
@@ -295,7 +297,7 @@ func _make_entity_node(e: Dictionary) -> Node3D:
 		"crystal_rock":
 			return Models.crystal_rock()
 		"pad":
-			return Models.pad()
+			return Models.starbase() if str(e.get("site", "")) == "starbase" else Models.pad()
 		"runway":
 			return Models.runway()
 		"lunar_pad":
@@ -405,7 +407,7 @@ func _process(dt: float) -> void:
 	_t += dt
 	var g := Game
 	var sim: ShipSim = g.sim
-	var origin: BigVec = g.slew.view_pos(g)   # the ship, or the debug free camera
+	var origin: BigVec = g.view_origin()   # ship, cinematic follow, or the debug free camera
 	_sync_entities()
 	# Sun + eclipse test against the planet and moon
 	var sd: Vector3 = g.sun_dir.normalized()
@@ -495,6 +497,8 @@ func _process(dt: float) -> void:
 		rig_xform = Transform3D(g.slew.cam_basis, Vector3.ZERO)
 	elif g.view_mode == 0:
 		rig_xform = Transform3D(sim.basis, sim.basis * (EYE + shake))
+	elif g.cine_style != "":
+		rig_xform = cine_xform(g, origin)
 	else:
 		rig_xform = chase_xform(sim, chase_distance(sim))
 		rig_xform.origin += sim.basis * shake * 20.0
@@ -720,6 +724,8 @@ func _animate_entity(e: Dictionary, n: Node3D, dt: float) -> void:
 				var sticks: Node3D = n.get_node_or_null("Chopsticks")
 				if sticks:
 					var want_open := 1.0
+					if Game.mission and float(Game.mission.guidance.get("chopstick_close", 0.0)) > 0.5:
+						want_open = 0.0
 					for be in Game.entities_of("booster"):
 						var ph := str(be.get("recovery", ""))
 						if ph in ["catching", "caught"] or (be.get("mode","") == "landed" and ph == "caught"):
@@ -764,6 +770,59 @@ func chase_stack_length_m(sim: ShipSim) -> float:
 ## Chase camera behind and above the ship; near the ground it swings to the side so it
 ## never ends up underground (e.g. the rocket standing on the pad).
 ## Look-at is the stack mid-body so ship + attached booster stay in frame together.
+func cine_xform(g: Node, origin: BigVec) -> Transform3D:
+	var sim: ShipSim = g.sim
+	var style := str(g.cine_style)
+	var subject: BigVec = g.view_origin()
+	var up: Vector3 = sim.up_dir if sim.up_dir.length() > 0.5 else Vector3.UP
+	var basis: Basis = sim.basis
+	var follow := str(g.cine_follow)
+	if follow == "booster":
+		var bs: Array = g.entities_of("booster")
+		if not bs.is_empty():
+			subject = bs[0]["pos"]
+			basis = bs[0].get("basis", basis) as Basis
+	elif follow == "pad":
+		var ps: Array = g.entities_of("pad")
+		if not ps.is_empty():
+			subject = ps[0]["pos"]
+			basis = ps[0].get("basis", basis) as Basis
+			up = basis.y
+	var tgt: Vector3 = subject.rel(origin)
+	var dist := 80.0
+	var off := Vector3.ZERO
+	match style:
+		"side":
+			dist = 45.0
+			off = basis.x * dist + basis.y * dist * 0.2
+		"aft":
+			dist = 55.0
+			off = basis.z * dist + basis.y * 12.0
+		"wide":
+			dist = 180.0
+			off = -basis.z * dist * 0.2 + basis.x * dist * 0.7 + up * 50.0
+		"tower":
+			dist = 90.0
+			var pads: Array = g.entities_of("pad")
+			if not pads.is_empty():
+				var pb: Basis = pads[0].get("basis", Basis.IDENTITY) as Basis
+				off = pb.x * -70.0 + pb.y * 50.0 + pb.z * 40.0
+				tgt = (pads[0]["pos"] as BigVec).rel(origin) + pb.y * 50.0
+		"pez":
+			dist = 28.0
+			off = basis.x * 22.0 + basis.y * 6.0 - basis.z * 4.0
+		"plasma":
+			dist = 50.0
+			off = -sim.surface_vel.normalized() * 40.0 + up * 18.0 if sim.surface_vel.length() > 1.0 else basis.x * 40.0 + up * 18.0
+		"flip":
+			dist = 40.0
+			off = basis.x * 30.0 + up * 16.0 + basis.z * 8.0
+		_:
+			off = -basis.z * -dist + basis.y * dist * 0.28 if follow != "pad" else basis.x * 60.0 + up * 30.0
+	var look_up: Vector3 = up if absf((tgt - off).normalized().dot(up)) < 0.98 else basis.y
+	return Transform3D(Basis.IDENTITY, off).looking_at(tgt, look_up)
+
+
 func chase_xform(sim: ShipSim, dist: float = -1.0) -> Transform3D:
 	if dist < 0.0:
 		dist = chase_distance(sim)

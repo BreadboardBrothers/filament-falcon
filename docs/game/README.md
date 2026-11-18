@@ -592,8 +592,9 @@ The physics is real. The assists make it easy.
 | 2 | **Space Hug** (docking) | Glide into the space station slower than a snail. | Keeping the nose dead-on with HOLD. | Creeping in with the RCS stick on the docking camera, then DOCK CLAMP! |
 | 3 | **Eagle Eye** (lunar) | Skim the Moon, find the beacon and land like a feather. | Slowing down and hovering to a soft touchdown. | Finding the beacon with the scanner and sliding the ship over it. |
 | 4 | **Rock Hoppers** (asteroids) | Rescue a lost pod, mine three crystals, jump home. | Dodging rocks and lasering crystal rocks. | Tractor-beaming the pod and crystals aboard, then the JUMP! |
-| 5 | **Homecoming** (reentry) | Blaze through the fiery air and glide onto the runway. | Holding the nose up, then flying the green boxes down to the runway. | Shields, beating the radio blackout, finding the runway. |
-| 6 | **Free Flight** (sandbox) | No rules: visit every place with the jump drive. | Try ASSIST OFF! | Play with the arm, scanner and jump drive. |
+| 5 | **Flight 15** (first catch) | Tower launch from Starbase; after ignition the flight is automatic. 26 Starlink V3, then the first ship Mechazilla catch. The booster aborts to a Gulf FTS. | Launch only: ARM, IGNITION, throttle at T−5. Then watch. | Watch the show; switch views. |
+| 6 | **Homecoming** (reentry) | Blaze through the fiery air and glide onto the runway. | Holding the nose up, then flying the green boxes down to the runway. | Shields, beating the radio blackout, finding the runway. |
+| 7 | **Free Flight** (sandbox) | No rules: visit every place with the jump drive. | Try ASSIST OFF! | Play with the arm, scanner and jump drive. |
 
 Each mission shows a briefing with a job for each seat. The strip at the top of the kids' console always
 shows each seat's current job, and the Commander's BRIEFING page lists every step with a ▶. At the end you
